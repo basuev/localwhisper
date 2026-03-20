@@ -2,6 +2,7 @@ import logging
 import threading
 
 import AppKit
+import objc
 import rumps
 
 log = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ from .transcriber import Transcriber
 
 class _FeedbackLauncher(AppKit.NSObject):
     def initWithText_callback_(self, text, callback):
-        self = Foundation.objc.super(_FeedbackLauncher, self).init()
+        self = objc.super(_FeedbackLauncher, self).init()
         if self is None:
             return None
         self._text = text
