@@ -284,3 +284,55 @@ def test_wav_encoding_roundtrip():
     data, sr = sf.read(buf2, dtype="float32")
     assert sr == sample_rate
     assert len(data) == samples
+
+
+def test_feedback_thumbs_up():
+    """Thumbs up fires callback with (True, None)."""
+    from localwhisper.feedback import FeedbackController
+
+    result = []
+    ctrl = FeedbackController(lambda r, c: result.append((r, c)))
+    ctrl.on_thumbs_up()
+    assert result == [(True, None)]
+
+
+def test_feedback_thumbs_down_with_comment():
+    """Thumbs down fires callback with (False, comment)."""
+    from localwhisper.feedback import FeedbackController
+
+    result = []
+    ctrl = FeedbackController(lambda r, c: result.append((r, c)))
+    ctrl.on_thumbs_down("bad quality")
+    assert result == [(False, "bad quality")]
+
+
+def test_feedback_timeout():
+    """Timeout fires callback with (None, None)."""
+    from localwhisper.feedback import FeedbackController
+
+    result = []
+    ctrl = FeedbackController(lambda r, c: result.append((r, c)))
+    ctrl.on_timeout()
+    assert result == [(None, None)]
+
+
+def test_feedback_callback_called_once():
+    """Callback is only called once even with multiple actions."""
+    from localwhisper.feedback import FeedbackController
+
+    result = []
+    ctrl = FeedbackController(lambda r, c: result.append((r, c)))
+    ctrl.on_thumbs_up()
+    ctrl.on_timeout()
+    ctrl.on_thumbs_down("late")
+    assert result == [(True, None)]
+
+
+def test_feedback_cancel_timer():
+    """cancel_timer() sets timer_cancelled flag."""
+    from localwhisper.feedback import FeedbackController
+
+    ctrl = FeedbackController(lambda r, c: None)
+    assert not ctrl.timer_cancelled
+    ctrl.cancel_timer()
+    assert ctrl.timer_cancelled
