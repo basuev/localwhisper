@@ -2,35 +2,18 @@ import logging
 import threading
 
 import AppKit
-import objc
 import rumps
 
 log = logging.getLogger(__name__)
 
-import Foundation
-
 from .clipboard import ClipboardManager
 from .config import load_config
-from .feedback import show_feedback
 from .history import save_to_history
 from .hotkey import HotkeyListener
 from .postprocessor import PostProcessor
 from .recorder import AudioRecorder
 from .sounds import play_sound
 from .transcriber import Transcriber
-
-
-class _FeedbackLauncher(AppKit.NSObject):
-    def initWithText_callback_(self, text, callback):
-        self = objc.super(_FeedbackLauncher, self).init()
-        if self is None:
-            return None
-        self._text = text
-        self._callback = callback
-        return self
-
-    def launch_(self, _sender):
-        show_feedback(self._text, self._callback)
 
 
 def _make_icon(symbol_name: str, with_dot: bool = False) -> AppKit.NSImage:
@@ -101,6 +84,7 @@ class LocalWhisperApp(rumps.App):
             recording_volume=self.config["recording_volume"],
             min_audio_energy=self.config["min_audio_energy"],
             min_recording_duration=self.config["min_recording_duration"],
+            input_device=self.config["input_device"],
         )
         self.transcriber = Transcriber(self.config)
         self.postprocessor = PostProcessor(self.config)
@@ -187,19 +171,7 @@ class LocalWhisperApp(rumps.App):
                 return
 
             self.clipboard.paste(processed_text)
-
-            if self.config.get("feedback_enabled"):
-                def on_feedback(rating, comment):
-                    save_to_history(raw_text, processed_text, rating=rating, comment=comment)
-
-                launcher = _FeedbackLauncher.alloc().initWithText_callback_(
-                    processed_text, on_feedback,
-                )
-                launcher.performSelectorOnMainThread_withObject_waitUntilDone_(
-                    b"launch:", None, False,
-                )
-            else:
-                save_to_history(raw_text, processed_text)
+            save_to_history(raw_text, processed_text)
         except Exception:
             log.exception("Processing failed")
         finally:

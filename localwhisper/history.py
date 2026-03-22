@@ -9,8 +9,6 @@ HISTORY_PATH = HISTORY_DIR / "history.jsonl"
 def save_to_history(
     raw_text: str,
     processed_text: str,
-    rating: bool | None = None,
-    comment: str | None = None,
     history_path: Path | None = None,
 ):
     history_path = history_path or HISTORY_PATH
@@ -20,8 +18,6 @@ def save_to_history(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "raw": raw_text,
         "processed": processed_text,
-        "rating": rating,
-        "comment": comment,
     }
 
     with open(history_path, "a") as f:

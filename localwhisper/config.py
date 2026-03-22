@@ -48,7 +48,7 @@ DEFAULT_CONFIG = {
     "sound_stop": "/System/Library/Sounds/Pop.aiff",
     "sound_cancel": "/System/Library/Sounds/Funk.aiff",
     "sound_error": "/System/Library/Sounds/Sosumi.aiff",
-    "feedback_enabled": True,
+    "input_device": None,
 }
 
 CONFIG_DIR = Path.home() / ".config" / "localwhisper"

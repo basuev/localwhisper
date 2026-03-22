@@ -16,6 +16,9 @@ hotkey_keycode: 61
 # Model idle timeout in seconds (unload after this period of inactivity)
 model_idle_timeout: 300
 
+# Input device: substring match by name or device index. None = system default.
+# input_device: "MacBook"
+
 # Microphone volume during recording (0-100), restored to previous value after
 recording_volume: 100
 
@@ -23,6 +26,3 @@ recording_volume: 100
 sound_start: "/System/Library/Sounds/Tink.aiff"
 sound_stop: "/System/Library/Sounds/Pop.aiff"
 sound_error: "/System/Library/Sounds/Sosumi.aiff"
-
-# Show feedback panel after transcription to rate quality
-feedback_enabled: true

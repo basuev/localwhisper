@@ -33,7 +33,6 @@ import localwhisper.recorder
 import localwhisper.clipboard
 import localwhisper.hotkey
 import localwhisper.sounds
-import localwhisper.feedback
 import localwhisper.app
 print('All imports OK')
 "
