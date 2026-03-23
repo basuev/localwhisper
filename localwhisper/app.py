@@ -17,6 +17,7 @@ from .postprocessor import PostProcessor
 from .recorder import AudioRecorder
 from .sounds import play_sound
 from .transcriber import Transcriber
+from . import focus
 
 SPEECH_LANGUAGES = [
     ("ru", "Russian"),
@@ -316,6 +317,7 @@ class LocalWhisperApp(rumps.App):
             play_sound(self.config["sound_cancel"])
 
     def _start_recording(self):
+        self._recording_source_app = focus.capture()
         self.recording = True
         self._cancelled = False
         self._set_icon(self._icon_recording)
@@ -353,6 +355,7 @@ class LocalWhisperApp(rumps.App):
             if self._cancelled:
                 return
 
+            focus.restore(self._recording_source_app)
             self.clipboard.paste(processed_text)
             save_to_history(raw_text, processed_text)
         except Exception:
