@@ -49,6 +49,9 @@ DEFAULT_CONFIG = {
     "sound_cancel": "/System/Library/Sounds/Funk.aiff",
     "sound_error": "/System/Library/Sounds/Sosumi.aiff",
     "input_device": None,
+    "postprocessor": "ollama",
+    "openai_model": "codex-gpt-5.4",
+    "translate_to": None,
 }
 
 CONFIG_DIR = Path.home() / ".config" / "localwhisper"

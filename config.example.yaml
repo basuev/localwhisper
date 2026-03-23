@@ -10,6 +10,15 @@ language: "ru"
 ollama_model: "qwen2.5:7b"
 ollama_url: "http://localhost:11434"
 
+# Post-processor backend: "ollama" (default) or "openai"
+# postprocessor: "ollama"
+
+# OpenAI model (used when postprocessor is "openai", requires ChatGPT Plus login)
+# openai_model: "codex-gpt-5.4"
+
+# Translation: null = off, or target language name like "English", "Japanese"
+# translate_to: null
+
 # Hotkey: keycode for Right Option
 hotkey_keycode: 61
 

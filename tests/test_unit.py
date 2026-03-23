@@ -96,6 +96,75 @@ def test_postprocessor_empty_text(default_config):
     assert pp.process("") == ""
 
 
+def test_postprocessor_empty_text_openai(default_config):
+    """Empty text returns empty without HTTP call (openai backend)."""
+    from localwhisper.postprocessor import PostProcessor
+
+    default_config["postprocessor"] = "openai"
+    pp = PostProcessor(default_config)
+    assert pp.process("") == ""
+
+
+def test_postprocessor_backend_selection(default_config):
+    """Backend is selected based on config."""
+    from localwhisper.postprocessor import PostProcessor
+
+    pp_ollama = PostProcessor(default_config)
+    assert pp_ollama.backend == "ollama"
+
+    default_config["postprocessor"] = "openai"
+    pp_openai = PostProcessor(default_config)
+    assert pp_openai.backend == "openai"
+
+
+def test_pkce_generation():
+    """PKCE verifier and challenge are valid."""
+    import hashlib
+    import base64
+
+    from localwhisper.oauth import _generate_pkce
+
+    verifier, challenge = _generate_pkce()
+    assert len(verifier) > 40
+    expected = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode()).digest()
+    ).rstrip(b"=").decode()
+    assert challenge == expected
+
+
+def test_build_auth_url():
+    """Auth URL contains required OAuth params."""
+    from localwhisper.oauth import _build_auth_url
+
+    url = _build_auth_url("test_challenge", "test_state_12345678")
+    assert "auth.openai.com" in url
+    assert "client_id=" in url
+    assert "code_challenge=test_challenge" in url
+    assert "localhost%3A1455" in url or "localhost:1455" in url
+    assert "%2Fauth%2Fcallback" in url or "/auth/callback" in url
+    assert "S256" in url
+    assert "state=test_state_12345678" in url
+
+
+def test_token_save_load_roundtrip(tmp_path, monkeypatch):
+    """Token save/load round-trip preserves data."""
+    import localwhisper.oauth as oauth_mod
+
+    token_path = tmp_path / "auth.json"
+    monkeypatch.setattr(oauth_mod, "TOKEN_PATH", token_path)
+
+    token_data = {
+        "access_token": "test_access",
+        "refresh_token": "test_refresh",
+        "expires_in": 3600,
+    }
+    oauth_mod._save_token(token_data)
+    loaded = oauth_mod.load_token()
+    assert loaded["access_token"] == "test_access"
+    assert loaded["refresh_token"] == "test_refresh"
+    assert "expires_at" in loaded
+
+
 def test_transcriber_empty_audio(default_config):
     """Empty bytes returns empty string without loading model."""
     from localwhisper.transcriber import Transcriber
@@ -189,6 +258,82 @@ def test_normal_text_passes_filter():
         assert not _is_hallucination(text), f"Should pass: {text!r}"
 
 
+def test_postprocessor_switch(default_config):
+    """switch() changes backend and model at runtime."""
+    from localwhisper.postprocessor import PostProcessor
+
+    pp = PostProcessor(default_config)
+    assert pp.backend == "ollama"
+    assert pp.ollama_model == default_config["ollama_model"]
+
+    pp.switch("openai", "gpt-4o")
+    assert pp.backend == "openai"
+    assert pp.openai_model == "gpt-4o"
+
+    pp.switch("ollama", "llama3:8b")
+    assert pp.backend == "ollama"
+    assert pp.ollama_model == "llama3:8b"
+
+
+def test_fetch_ollama_models_success(monkeypatch):
+    """fetch_ollama_models parses /api/tags response."""
+    from unittest.mock import Mock
+
+    from localwhisper.models import fetch_ollama_models
+
+    mock_resp = Mock()
+    mock_resp.status_code = 200
+    mock_resp.raise_for_status = Mock()
+    mock_resp.json.return_value = {
+        "models": [{"name": "qwen2.5:7b"}, {"name": "llama3:8b"}]
+    }
+
+    import localwhisper.models as models_mod
+    monkeypatch.setattr(models_mod.requests, "get", lambda *a, **kw: mock_resp)
+
+    result = fetch_ollama_models("http://localhost:11434")
+    assert result == ["qwen2.5:7b", "llama3:8b"]
+
+
+def test_fetch_ollama_models_failure(monkeypatch):
+    """fetch_ollama_models returns empty list on error."""
+    from localwhisper.models import fetch_ollama_models
+    import localwhisper.models as models_mod
+
+    monkeypatch.setattr(
+        models_mod.requests, "get",
+        lambda *a, **kw: (_ for _ in ()).throw(ConnectionError("no ollama")),
+    )
+
+    assert fetch_ollama_models("http://localhost:11434") == []
+
+
+def test_load_codex_models_success(tmp_path):
+    """load_codex_models reads visible models from cache."""
+    import json
+    from localwhisper.models import load_codex_models
+
+    cache = tmp_path / "models_cache.json"
+    cache.write_text(json.dumps({
+        "models": [
+            {"slug": "gpt-5.4", "visibility": "list"},
+            {"slug": "gpt-5.3-codex", "visibility": "list"},
+            {"slug": "gpt-5.1", "visibility": "hide"},
+        ]
+    }))
+
+    result = load_codex_models(cache_path=cache)
+    assert result == ["gpt-5.4", "gpt-5.3-codex"]
+
+
+def test_load_codex_models_missing_file(tmp_path):
+    """load_codex_models returns empty list when file missing."""
+    from localwhisper.models import load_codex_models
+
+    result = load_codex_models(cache_path=tmp_path / "nonexistent.json")
+    assert result == []
+
+
 def test_wav_encoding_roundtrip():
     """numpy -> WAV bytes -> numpy round-trip preserves data shape."""
     sample_rate = 16000
@@ -205,4 +350,14 @@ def test_wav_encoding_roundtrip():
     assert sr == sample_rate
     assert len(data) == samples
 
+
+def test_load_config_has_translate_to_default(tmp_path):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("{}\n")
+
+    from localwhisper.config import load_config
+
+    config = load_config(config_path=config_file)
+    assert "translate_to" in config
+    assert config["translate_to"] is None
 
