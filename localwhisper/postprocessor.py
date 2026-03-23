@@ -79,7 +79,8 @@ class PostProcessor:
         try:
             token = oauth.get_valid_token()
             if not token:
-                return self._process_ollama(text)
+                log.error("OpenAI post-processing failed: not logged in (use Login in the menu)")
+                return text
 
             headers = {"Authorization": f"Bearer {token}"}
             account_id = oauth.get_account_id()
@@ -101,12 +102,12 @@ class PostProcessor:
             )
             if not resp.ok:
                 body = resp.text[:500] if not resp.headers.get("transfer-encoding") else resp.content[:500].decode(errors="replace")
-                log.error("openai HTTP %d: %s", resp.status_code, body)
+                log.error("OpenAI post-processing failed (HTTP %d): %s", resp.status_code, body)
             resp.raise_for_status()
             return self._parse_sse_response(resp, text)
         except Exception:
-            log.exception("openai postprocess failed, falling back to ollama")
-            return self._process_ollama(text)
+            log.exception("OpenAI post-processing failed")
+            return text
 
     @staticmethod
     def _parse_sse_response(resp, fallback: str) -> str:
