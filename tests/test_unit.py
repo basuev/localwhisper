@@ -370,7 +370,16 @@ def test_postprocessor_builds_translate_prompt(default_config):
     assert pp.translate_to == "English"
     prompt = pp._build_prompt()
     assert "English" in prompt
-    assert default_config["postprocess_prompt"] in prompt
+    assert "Russian" not in prompt
+    assert default_config["postprocess_prompt"] not in prompt
+
+
+def test_postprocessor_no_translate_keeps_do_not_translate(default_config):
+    from localwhisper.postprocessor import PostProcessor
+
+    pp = PostProcessor(default_config)
+    prompt = pp._build_prompt()
+    assert "Do NOT translate" in prompt
 
 
 def test_postprocessor_no_translate_prompt(default_config):
@@ -393,6 +402,35 @@ def test_postprocessor_set_translate_to(default_config):
     pp.set_translate_to(None)
     assert pp.translate_to is None
     assert pp._build_prompt() == default_config["postprocess_prompt"]
+
+
+def test_save_config_roundtrip(tmp_path):
+    """save_config persists updates and load_config reads them back."""
+    from localwhisper.config import load_config, save_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml.dump({"language": "ru"}))
+
+    save_config({"language": "en", "translate_to": "German"}, config_path=config_file)
+
+    config = load_config(config_path=config_file)
+    assert config["language"] == "en"
+    assert config["translate_to"] == "German"
+
+
+def test_save_config_preserves_existing_keys(tmp_path):
+    """save_config does not drop keys not in the update."""
+    from localwhisper.config import save_config
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(yaml.dump({"language": "ru", "ollama_model": "qwen2.5:7b"}))
+
+    save_config({"language": "en"}, config_path=config_file)
+
+    with open(config_file) as f:
+        saved = yaml.safe_load(f)
+    assert saved["language"] == "en"
+    assert saved["ollama_model"] == "qwen2.5:7b"
 
 
 def test_transcriber_language_mutable(default_config):

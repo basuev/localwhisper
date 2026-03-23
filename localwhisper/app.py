@@ -8,7 +8,7 @@ log = logging.getLogger(__name__)
 
 from . import oauth
 from .clipboard import ClipboardManager
-from .config import load_config
+from .config import load_config, save_config
 from .history import save_to_history
 from .hotkey import HotkeyListener
 from .models import fetch_ollama_models, load_codex_models
@@ -224,6 +224,8 @@ class LocalWhisperApp(rumps.App):
             submenu[model].state = 1
 
         self._model_menu.title = self._model_menu_title()
+        model_key = "ollama_model" if backend == "ollama" else "openai_model"
+        save_config({"postprocessor": backend, model_key: model})
 
     def _make_speech_lang_callback(self, code: str, name: str):
         def callback(_):
@@ -238,6 +240,7 @@ class LocalWhisperApp(rumps.App):
         if name in self._speech_lang_menu:
             self._speech_lang_menu[name].state = 1
         self._speech_lang_menu.title = f"Speech: {name}"
+        save_config({"language": code})
 
     def _make_translate_callback(self, language: str):
         def callback(_):
@@ -253,11 +256,13 @@ class LocalWhisperApp(rumps.App):
             self._translate_menu.title = "Translate: Off"
             if "Off" in self._translate_menu:
                 self._translate_menu["Off"].state = 1
+            save_config({"translate_to": None})
         else:
             self.postprocessor.set_translate_to(language)
             self._translate_menu.title = f"Translate: {language}"
             if language in self._translate_menu:
                 self._translate_menu[language].state = 1
+            save_config({"translate_to": language})
 
     def _on_openai_login(self, _):
         self._openai_login_item.title = "Logging in..."

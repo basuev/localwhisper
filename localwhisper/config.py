@@ -75,3 +75,13 @@ def load_config(config_path: Path | None = None) -> dict:
 
     config = {**DEFAULT_CONFIG, **user_config}
     return config
+
+
+def save_config(updates: dict, config_path: Path | None = None) -> None:
+    config_path = config_path or CONFIG_PATH
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path) as f:
+        current = yaml.safe_load(f) or {}
+    current.update(updates)
+    with open(config_path, "w") as f:
+        yaml.dump(current, f, default_flow_style=False, allow_unicode=True)
