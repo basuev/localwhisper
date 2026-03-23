@@ -361,3 +361,36 @@ def test_load_config_has_translate_to_default(tmp_path):
     assert "translate_to" in config
     assert config["translate_to"] is None
 
+
+def test_postprocessor_builds_translate_prompt(default_config):
+    from localwhisper.postprocessor import PostProcessor
+
+    default_config["translate_to"] = "English"
+    pp = PostProcessor(default_config)
+    assert pp.translate_to == "English"
+    prompt = pp._build_prompt()
+    assert "English" in prompt
+    assert default_config["postprocess_prompt"] in prompt
+
+
+def test_postprocessor_no_translate_prompt(default_config):
+    from localwhisper.postprocessor import PostProcessor
+
+    pp = PostProcessor(default_config)
+    assert pp.translate_to is None
+    prompt = pp._build_prompt()
+    assert prompt == default_config["postprocess_prompt"]
+
+
+def test_postprocessor_set_translate_to(default_config):
+    from localwhisper.postprocessor import PostProcessor
+
+    pp = PostProcessor(default_config)
+    pp.set_translate_to("Japanese")
+    assert pp.translate_to == "Japanese"
+    assert "Japanese" in pp._build_prompt()
+
+    pp.set_translate_to(None)
+    assert pp.translate_to is None
+    assert pp._build_prompt() == default_config["postprocess_prompt"]
+
