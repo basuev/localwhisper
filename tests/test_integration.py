@@ -32,6 +32,33 @@ class TestOllama:
         assert isinstance(result, str)
         assert len(result) > 0
 
+    def test_postprocessor_translates(self, default_config):
+        from localwhisper.postprocessor import PostProcessor
+
+        default_config["translate_to"] = "English"
+        pp = PostProcessor(default_config)
+        result = pp.process("привет мир")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+
+def _openai_token_available() -> bool:
+    from localwhisper.oauth import get_valid_token
+
+    return get_valid_token() is not None
+
+
+@pytest.mark.skipif(not _openai_token_available(), reason="No OpenAI token")
+class TestOpenAI:
+    def test_openai_postprocessor_returns_text(self, default_config):
+        from localwhisper.postprocessor import PostProcessor
+
+        default_config["postprocessor"] = "openai"
+        pp = PostProcessor(default_config)
+        result = pp.process("test message")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
 
 class TestClipboard:
     def test_clipboard_roundtrip(self):
