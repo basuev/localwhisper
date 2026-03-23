@@ -12,7 +12,7 @@ class PostProcessor:
         self.ollama_model = config["ollama_model"]
         self.ollama_url = config["ollama_url"]
 
-        self.openai_model = config.get("openai_model", "codex-gpt-5.4")
+        self.openai_model = config.get("openai_model", "gpt-5.4")
 
     def set_translate_to(self, language: str | None):
         self.translate_to = language

@@ -14,7 +14,7 @@ ollama_url: "http://localhost:11434"
 # postprocessor: "ollama"
 
 # OpenAI model (used when postprocessor is "openai", requires ChatGPT Plus login)
-# openai_model: "codex-gpt-5.4"
+# openai_model: "gpt-5.4"
 
 # Translation: null = off, or target language name like "English", "Japanese"
 # translate_to: null

@@ -50,7 +50,7 @@ DEFAULT_CONFIG = {
     "sound_error": "/System/Library/Sounds/Sosumi.aiff",
     "input_device": None,
     "postprocessor": "ollama",
-    "openai_model": "codex-gpt-5.4",
+    "openai_model": "gpt-5.4",
     "translate_to": None,
 }
 
