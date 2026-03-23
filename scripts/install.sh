@@ -26,6 +26,10 @@ echo "Setting up Python environment..."
 cd "$PROJECT_DIR"
 uv sync
 
+# Download Whisper model
+echo "Downloading Whisper model (this may take a while)..."
+.venv/bin/huggingface-cli download mlx-community/whisper-large-v3-mlx
+
 # Create config if not exists
 CONFIG_DIR="$HOME/.config/localwhisper"
 if [ ! -f "$CONFIG_DIR/config.yaml" ]; then
@@ -83,4 +87,4 @@ echo "  System Settings > Privacy & Security > Accessibility"
 echo ""
 echo "To start now:  launchctl load $PLIST_PATH"
 echo "To stop:       launchctl unload $PLIST_PATH"
-echo "To run manually: cd $PROJECT_DIR && uv run localwhisper"
+echo "To run manually: cd $PROJECT_DIR && .venv/bin/localwhisper"
