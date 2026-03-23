@@ -394,3 +394,12 @@ def test_postprocessor_set_translate_to(default_config):
     assert pp.translate_to is None
     assert pp._build_prompt() == default_config["postprocess_prompt"]
 
+
+def test_transcriber_language_mutable(default_config):
+    from localwhisper.transcriber import Transcriber
+
+    t = Transcriber(default_config)
+    assert t.language == "ru"
+    t.language = "en"
+    assert t.language == "en"
+
