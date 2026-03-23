@@ -2,6 +2,7 @@ import logging
 import threading
 
 import AppKit
+from PyObjCTools.AppHelper import callAfter
 import rumps
 
 log = logging.getLogger(__name__)
@@ -158,6 +159,7 @@ class LocalWhisperApp(rumps.App):
         self.transcriber = Transcriber(self.config)
         threading.Thread(target=self.transcriber.preload, daemon=True).start()
         self.postprocessor = PostProcessor(self.config)
+        log.info("Post-processing model: %s / %s", self._current_backend, self._current_model)
         self.clipboard = ClipboardManager()
 
         self.hotkey_listener = HotkeyListener(
@@ -169,6 +171,9 @@ class LocalWhisperApp(rumps.App):
 
     def _set_icon(self, nsimage: AppKit.NSImage):
         """Set status bar icon directly from NSImage, bypassing rumps file-path logic."""
+        if threading.current_thread() is not threading.main_thread():
+            callAfter(self._set_icon, nsimage)
+            return
         self._icon_nsimage = nsimage
         try:
             self._nsapp.setStatusBarIcon()
@@ -224,6 +229,7 @@ class LocalWhisperApp(rumps.App):
             submenu[model].state = 1
 
         self._model_menu.title = self._model_menu_title()
+        log.info("Switched post-processing model: %s / %s", backend, model)
         model_key = "ollama_model" if backend == "ollama" else "openai_model"
         save_config({"postprocessor": backend, model_key: model})
 
@@ -279,6 +285,9 @@ class LocalWhisperApp(rumps.App):
         threading.Thread(target=do_login, daemon=True).start()
 
     def _on_hotkey(self):
+        callAfter(self._on_hotkey_main)
+
+    def _on_hotkey_main(self):
         if self.processing:
             return
 
@@ -289,21 +298,22 @@ class LocalWhisperApp(rumps.App):
 
     def _on_cancel(self) -> bool:
         """Handle Escape press. Returns True if the event should be swallowed."""
+        if not self.recording and not self.processing:
+            return False
+        callAfter(self._on_cancel_main)
+        return True
+
+    def _on_cancel_main(self):
         if self.recording:
             self.recording = False
             self.recorder.stop()
             self._set_icon(self._icon_idle)
             play_sound(self.config["sound_cancel"])
-            return True
-
-        if self.processing:
+        elif self.processing:
             self._cancelled = True
             self.processing = False
             self._set_icon(self._icon_idle)
             play_sound(self.config["sound_cancel"])
-            return True
-
-        return False
 
     def _start_recording(self):
         self.recording = True
