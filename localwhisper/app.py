@@ -6,14 +6,29 @@ import rumps
 
 log = logging.getLogger(__name__)
 
+from . import oauth
 from .clipboard import ClipboardManager
 from .config import load_config
 from .history import save_to_history
 from .hotkey import HotkeyListener
+from .models import fetch_ollama_models, load_codex_models
 from .postprocessor import PostProcessor
 from .recorder import AudioRecorder
 from .sounds import play_sound
 from .transcriber import Transcriber
+
+SPEECH_LANGUAGES = [
+    ("ru", "Russian"),
+    ("en", "English"),
+    ("de", "German"),
+    ("fr", "French"),
+    ("es", "Spanish"),
+    ("ja", "Japanese"),
+    ("zh", "Chinese"),
+    ("ko", "Korean"),
+    ("uk", "Ukrainian"),
+    ("pl", "Polish"),
+]
 
 
 def _make_icon(symbol_name: str, with_dot: bool = False) -> AppKit.NSImage:
@@ -75,9 +90,40 @@ class LocalWhisperApp(rumps.App):
 
         self._set_icon(self._icon_idle)
 
-        # Quit menu item with Cmd+Q
+        self._current_backend = self.config.get("postprocessor", "ollama")
+        if self._current_backend == "ollama":
+            self._current_model = self.config["ollama_model"]
+        else:
+            self._current_model = self.config.get("openai_model", "codex-gpt-5.4")
+
+        self._model_menu = rumps.MenuItem(self._model_menu_title())
+        self._local_menu = rumps.MenuItem("Local")
+        self._openai_menu = rumps.MenuItem("OpenAI")
+
+        token = oauth.load_token()
+        login_title = "Logged in" if token else "Login"
+        self._openai_login_item = rumps.MenuItem(login_title, callback=self._on_openai_login)
+        self._openai_menu[self._openai_login_item.title] = self._openai_login_item
+
+        self._model_menu[self._local_menu.title] = self._local_menu
+        self._model_menu[self._openai_menu.title] = self._openai_menu
+
+        current_lang_name = next(
+            (name for code, name in SPEECH_LANGUAGES if code == self.config["language"]),
+            self.config["language"],
+        )
+        self._speech_lang_menu = rumps.MenuItem(f"Speech: {current_lang_name}")
+        for code, name in SPEECH_LANGUAGES:
+            item = rumps.MenuItem(name, callback=self._make_speech_lang_callback(code, name))
+            if code == self.config["language"]:
+                item.state = 1
+            self._speech_lang_menu[name] = item
+
         quit_item = rumps.MenuItem("Quit", callback=lambda _: rumps.quit_application(), key="q")
-        self.menu = [quit_item]
+        self.menu = [self._model_menu, self._speech_lang_menu, None, quit_item]
+
+        self._populate_default_models()
+        threading.Thread(target=self._refresh_models, daemon=True).start()
 
         self.recorder = AudioRecorder(
             sample_rate=self.config["sample_rate"],
@@ -87,6 +133,7 @@ class LocalWhisperApp(rumps.App):
             input_device=self.config["input_device"],
         )
         self.transcriber = Transcriber(self.config)
+        threading.Thread(target=self.transcriber.preload, daemon=True).start()
         self.postprocessor = PostProcessor(self.config)
         self.clipboard = ClipboardManager()
 
@@ -104,6 +151,84 @@ class LocalWhisperApp(rumps.App):
             self._nsapp.setStatusBarIcon()
         except AttributeError:
             pass
+
+    def _model_menu_title(self) -> str:
+        backend_label = "Local" if self._current_backend == "ollama" else "OpenAI"
+        return f"Model: {backend_label} ({self._current_model})"
+
+    def _populate_default_models(self):
+        default_model = self.config["ollama_model"]
+        item = rumps.MenuItem(default_model, callback=self._make_model_callback("ollama", default_model))
+        if self._current_backend == "ollama" and self._current_model == default_model:
+            item.state = 1
+        self._local_menu[default_model] = item
+
+        codex_models = load_codex_models()
+        openai_models = codex_models if codex_models else [self.config.get("openai_model", "codex-gpt-5.4")]
+        for name in openai_models:
+            item = rumps.MenuItem(name, callback=self._make_model_callback("openai", name))
+            if self._current_backend == "openai" and self._current_model == name:
+                item.state = 1
+            self._openai_menu[name] = item
+
+    def _refresh_models(self):
+        ollama_models = fetch_ollama_models(self.config["ollama_url"])
+        if ollama_models:
+            self._local_menu.clear()
+            for name in ollama_models:
+                item = rumps.MenuItem(name, callback=self._make_model_callback("ollama", name))
+                if self._current_backend == "ollama" and self._current_model == name:
+                    item.state = 1
+                self._local_menu[name] = item
+
+    def _make_model_callback(self, backend: str, model: str):
+        def callback(_):
+            self._select_model(backend, model)
+        return callback
+
+    def _select_model(self, backend: str, model: str):
+        for menu in (self._local_menu, self._openai_menu):
+            for key in menu:
+                if isinstance(menu[key], rumps.MenuItem):
+                    menu[key].state = 0
+
+        self._current_backend = backend
+        self._current_model = model
+        self.postprocessor.switch(backend, model)
+
+        submenu = self._local_menu if backend == "ollama" else self._openai_menu
+        if model in submenu:
+            submenu[model].state = 1
+
+        self._model_menu.title = self._model_menu_title()
+
+    def _make_speech_lang_callback(self, code: str, name: str):
+        def callback(_):
+            self._select_speech_language(code, name)
+        return callback
+
+    def _select_speech_language(self, code: str, name: str):
+        for key in self._speech_lang_menu:
+            if isinstance(self._speech_lang_menu[key], rumps.MenuItem):
+                self._speech_lang_menu[key].state = 0
+        self.transcriber.language = code
+        if name in self._speech_lang_menu:
+            self._speech_lang_menu[name].state = 1
+        self._speech_lang_menu.title = f"Speech: {name}"
+
+    def _on_openai_login(self, _):
+        self._openai_login_item.title = "Logging in..."
+        self._openai_login_item.set_callback(None)
+
+        def do_login():
+            if oauth.login():
+                self._openai_login_item.title = "Logged in"
+                threading.Thread(target=self._refresh_models, daemon=True).start()
+            else:
+                self._openai_login_item.title = "Login failed"
+            self._openai_login_item.set_callback(self._on_openai_login)
+
+        threading.Thread(target=do_login, daemon=True).start()
 
     def _on_hotkey(self):
         if self.processing:
