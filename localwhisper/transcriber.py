@@ -54,6 +54,12 @@ class Transcriber:
         self._unload_timer.start()
 
     def preload(self):
+        from .preflight import is_model_cached
+
+        if not is_model_cached(self.model_name):
+            log.warning("Whisper model not cached, skipping preload: %s", self.model_name)
+            return
+
         with self._lock:
             self._ensure_loaded()
 

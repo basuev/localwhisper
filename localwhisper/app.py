@@ -1,4 +1,5 @@
 import logging
+import sys
 import threading
 
 import AppKit
@@ -371,6 +372,13 @@ def main():
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s: %(message)s",
     )
+
+    from .preflight import run_checks
+
+    config = load_config()
+    if not run_checks(config):
+        sys.exit(1)
+
     app = LocalWhisperApp()
     app.run()
 

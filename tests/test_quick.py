@@ -12,6 +12,7 @@ MODULES = [
     "localwhisper.sounds",
     "localwhisper.clipboard",
     "localwhisper.hotkey",
+    "localwhisper.preflight",
     "localwhisper.app",
 ]
 
