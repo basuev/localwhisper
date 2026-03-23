@@ -30,6 +30,18 @@ SPEECH_LANGUAGES = [
     ("pl", "Polish"),
 ]
 
+TRANSLATE_LANGUAGES = [
+    "Off",
+    "Russian",
+    "English",
+    "German",
+    "French",
+    "Spanish",
+    "Japanese",
+    "Chinese",
+    "Korean",
+]
+
 
 def _make_icon(symbol_name: str, with_dot: bool = False) -> AppKit.NSImage:
     """Create a status bar icon from an SF Symbol, optionally with a red dot."""
@@ -119,8 +131,19 @@ class LocalWhisperApp(rumps.App):
                 item.state = 1
             self._speech_lang_menu[name] = item
 
+        current_translate = self.config.get("translate_to")
+        translate_label = current_translate if current_translate else "Off"
+        self._translate_menu = rumps.MenuItem(f"Translate: {translate_label}")
+        for lang in TRANSLATE_LANGUAGES:
+            item = rumps.MenuItem(lang, callback=self._make_translate_callback(lang))
+            if lang == "Off" and not current_translate:
+                item.state = 1
+            elif lang == current_translate:
+                item.state = 1
+            self._translate_menu[lang] = item
+
         quit_item = rumps.MenuItem("Quit", callback=lambda _: rumps.quit_application(), key="q")
-        self.menu = [self._model_menu, self._speech_lang_menu, None, quit_item]
+        self.menu = [self._model_menu, self._speech_lang_menu, self._translate_menu, None, quit_item]
 
         self._populate_default_models()
         threading.Thread(target=self._refresh_models, daemon=True).start()
@@ -215,6 +238,26 @@ class LocalWhisperApp(rumps.App):
         if name in self._speech_lang_menu:
             self._speech_lang_menu[name].state = 1
         self._speech_lang_menu.title = f"Speech: {name}"
+
+    def _make_translate_callback(self, language: str):
+        def callback(_):
+            self._select_translate(language)
+        return callback
+
+    def _select_translate(self, language: str):
+        for key in self._translate_menu:
+            if isinstance(self._translate_menu[key], rumps.MenuItem):
+                self._translate_menu[key].state = 0
+        if language == "Off":
+            self.postprocessor.set_translate_to(None)
+            self._translate_menu.title = "Translate: Off"
+            if "Off" in self._translate_menu:
+                self._translate_menu["Off"].state = 1
+        else:
+            self.postprocessor.set_translate_to(language)
+            self._translate_menu.title = f"Translate: {language}"
+            if language in self._translate_menu:
+                self._translate_menu[language].state = 1
 
     def _on_openai_login(self, _):
         self._openai_login_item.title = "Logging in..."
