@@ -1,7 +1,14 @@
+import io
+import logging
 import tempfile
 import threading
 import time
 from pathlib import Path
+
+import numpy as np
+import soundfile as sf
+
+log = logging.getLogger(__name__)
 
 WHISPER_HALLUCINATIONS = [
     "продолжение следует",
@@ -45,6 +52,33 @@ class Transcriber:
         self._unload_timer = threading.Timer(self.idle_timeout, self._unload)
         self._unload_timer.daemon = True
         self._unload_timer.start()
+
+    def preload(self):
+        with self._lock:
+            self._ensure_loaded()
+
+        buf = io.BytesIO()
+        silence = np.zeros(16000, dtype=np.float32)
+        sf.write(buf, silence, 16000, format="WAV", subtype="FLOAT")
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(buf.getvalue())
+            tmp_path = f.name
+
+        try:
+            self._mlx_whisper.transcribe(
+                tmp_path,
+                path_or_hf_repo=self.model_name,
+                language=self.language,
+            )
+            log.info("Whisper model preloaded: %s", self.model_name)
+        except Exception:
+            log.warning("Failed to preload Whisper model", exc_info=True)
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+        self._last_used = time.time()
+        self._schedule_unload()
 
     def _unload(self):
         with self._lock:
