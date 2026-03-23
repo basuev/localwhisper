@@ -1,6 +1,11 @@
+import json
+import logging
+
 import requests
 
 from localwhisper import oauth
+
+log = logging.getLogger(__name__)
 
 
 class PostProcessor:
@@ -21,9 +26,14 @@ class PostProcessor:
         if not self.translate_to:
             return self.prompt
         return (
-            f"{self.prompt}\n\n"
-            f"After all corrections, translate the entire result into {self.translate_to}. "
-            f"Output only the translated text."
+            f"You are a post-processor for speech-to-text. "
+            f"The input is a dictated message.\n\n"
+            f"Rules:\n"
+            f"1. Fix punctuation and capitalization.\n"
+            f"2. Remove false starts, self-corrections, and word/phrase repetitions. "
+            f"Keep the final version of each rephrased segment.\n"
+            f"3. Translate the result into {self.translate_to}.\n\n"
+            f"Output only the translated text, nothing else."
         )
 
     def switch(self, backend: str, model: str):
@@ -62,6 +72,7 @@ class PostProcessor:
             result = resp.json().get("message", {}).get("content", "").strip()
             return result if result else text
         except Exception:
+            log.exception("ollama postprocess failed")
             return text
 
     def _process_openai(self, text: str) -> str:
@@ -70,27 +81,56 @@ class PostProcessor:
             if not token:
                 return self._process_ollama(text)
 
+            headers = {"Authorization": f"Bearer {token}"}
+            account_id = oauth.get_account_id()
+            if account_id:
+                headers["ChatGPT-Account-Id"] = account_id
+
             resp = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {token}"},
+                "https://chatgpt.com/backend-api/codex/responses",
+                headers=headers,
                 json={
                     "model": self.openai_model,
-                    "messages": [
-                        {"role": "system", "content": self._build_prompt()},
-                        {"role": "user", "content": text},
-                    ],
-                    "temperature": 0,
+                    "instructions": self._build_prompt(),
+                    "input": [{"role": "user", "content": text}],
+                    "store": False,
+                    "stream": True,
                 },
-                timeout=30,
+                timeout=60,
+                stream=True,
             )
+            if not resp.ok:
+                body = resp.text[:500] if not resp.headers.get("transfer-encoding") else resp.content[:500].decode(errors="replace")
+                log.error("openai HTTP %d: %s", resp.status_code, body)
             resp.raise_for_status()
-            result = (
-                resp.json()
-                .get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
-            )
-            return result if result else text
+            return self._parse_sse_response(resp, text)
         except Exception:
-            return text
+            log.exception("openai postprocess failed, falling back to ollama")
+            return self._process_ollama(text)
+
+    @staticmethod
+    def _parse_sse_response(resp, fallback: str) -> str:
+        result = ""
+        for raw_line in resp.iter_lines():
+            line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+            if not line or not line.startswith("data: "):
+                continue
+            payload = line[6:]
+            if payload == "[DONE]":
+                break
+            try:
+                event = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            if event.get("type") == "response.output_text.delta":
+                result += event.get("delta", "")
+            elif event.get("type") in ("response.completed", "response.done"):
+                response_data = event.get("response", {})
+                for item in response_data.get("output", []):
+                    if item.get("type") == "message":
+                        for content in item.get("content", []):
+                            if content.get("type") == "output_text":
+                                result = content.get("text", "").strip()
+                                break
+                        break
+        return result.strip() if result.strip() else fallback

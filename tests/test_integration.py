@@ -59,6 +59,16 @@ class TestOpenAI:
         assert isinstance(result, str)
         assert len(result) > 0
 
+    def test_openai_postprocessor_translates(self, default_config):
+        from localwhisper.postprocessor import PostProcessor
+
+        default_config["postprocessor"] = "openai"
+        default_config["translate_to"] = "English"
+        pp = PostProcessor(default_config)
+        result = pp.process("привет мир")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
 
 class TestClipboard:
     def test_clipboard_roundtrip(self):
