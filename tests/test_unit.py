@@ -671,3 +671,125 @@ def test_engine_recording_failed_empty_audio(default_config):
     assert len(received) == 1
     assert received[0].reason == "no_audio"
 
+
+def test_engine_cancel_during_recording(default_config):
+    from unittest.mock import Mock
+    from localwhisper.events import Cancelled
+
+    mock_recorder = Mock()
+    mock_recorder.stop.return_value = b""
+    engine = _make_engine(default_config, recorder=mock_recorder)
+
+    received = []
+    engine.on(Cancelled, lambda e: received.append(e))
+
+    engine.toggle()
+    assert engine.state == "recording"
+
+    engine.cancel()
+    assert engine.state == "idle"
+    assert len(received) == 1
+    assert received[0].stage == "recording"
+
+
+def test_engine_cancel_during_processing(default_config):
+    from unittest.mock import Mock
+    from localwhisper.events import Cancelled
+    import threading as _threading
+
+    started = _threading.Event()
+    mock_recorder = Mock()
+    mock_recorder.stop.return_value = _make_wav_bytes()
+    mock_transcriber = Mock()
+
+    def slow_transcribe(x):
+        started.set()
+        _threading.Event().wait(2)
+        return "text"
+
+    mock_transcriber.transcribe.side_effect = slow_transcribe
+    mock_postprocessor = Mock()
+
+    engine = _make_engine(
+        default_config,
+        recorder=mock_recorder,
+        transcriber=mock_transcriber,
+        postprocessor=mock_postprocessor,
+    )
+
+    received = []
+    engine.on(Cancelled, lambda e: received.append(e))
+
+    engine.toggle()
+    engine.toggle()
+    started.wait(timeout=2)
+    assert engine.state == "processing"
+
+    engine.cancel()
+    assert len(received) == 1
+    assert received[0].stage == "processing"
+
+
+def test_engine_cancel_while_idle_ignored(default_config):
+    from localwhisper.events import Cancelled
+
+    engine = _make_engine(default_config)
+
+    received = []
+    engine.on(Cancelled, lambda e: received.append(e))
+    engine.cancel()
+
+    assert engine.state == "idle"
+    assert len(received) == 0
+
+
+def test_engine_transcribe_direct(default_config):
+    from unittest.mock import Mock
+    from localwhisper.events import TranscriptionDone, PostProcessingDone
+    import threading as _threading
+
+    done = _threading.Event()
+    mock_transcriber = Mock()
+    mock_transcriber.transcribe.return_value = "hello world"
+    mock_postprocessor = Mock()
+    mock_postprocessor.process.return_value = "Hello, world."
+
+    engine = _make_engine(
+        default_config,
+        transcriber=mock_transcriber,
+        postprocessor=mock_postprocessor,
+    )
+
+    td_events = []
+    ppd_events = []
+    engine.on(TranscriptionDone, lambda e: td_events.append(e))
+    engine.on(PostProcessingDone, lambda e: (ppd_events.append(e), done.set()))
+
+    engine.transcribe(b"fake_wav_data")
+    done.wait(timeout=2)
+
+    assert len(td_events) == 1
+    assert td_events[0].raw_text == "hello world"
+    assert len(ppd_events) == 1
+    assert ppd_events[0].raw_text == "hello world"
+    assert ppd_events[0].processed_text == "Hello, world."
+    assert engine.state == "idle"
+
+
+def test_engine_transcribe_while_recording_ignored(default_config):
+    from unittest.mock import Mock
+
+    mock_recorder = Mock()
+    mock_transcriber = Mock()
+    engine = _make_engine(
+        default_config,
+        recorder=mock_recorder,
+        transcriber=mock_transcriber,
+    )
+
+    engine.toggle()
+    assert engine.state == "recording"
+
+    engine.transcribe(b"audio")
+    mock_transcriber.transcribe.assert_not_called()
+
