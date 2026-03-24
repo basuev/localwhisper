@@ -11,13 +11,21 @@ log = logging.getLogger(__name__)
 from . import oauth
 from .clipboard import ClipboardManager
 from .config import load_config, save_config
+from .engine import LocalWhisperEngine
+from .events import (
+    Cancelled,
+    PostProcessingDone,
+    PostProcessingFailed,
+    RecordingDone,
+    RecordingFailed,
+    RecordingStarted,
+    TranscriptionDone,
+    TranscriptionFailed,
+)
 from .history import save_to_history
 from .hotkey import HotkeyListener
 from .models import fetch_ollama_models, load_codex_models
-from .postprocessor import PostProcessor
-from .recorder import AudioRecorder
 from .sounds import play_sound
-from .transcriber import Transcriber
 from . import focus
 
 SPEECH_LANGUAGES = [
@@ -47,22 +55,18 @@ TRANSLATE_LANGUAGES = [
 
 
 def _make_icon(symbol_name: str, with_dot: bool = False) -> AppKit.NSImage:
-    """Create a status bar icon from an SF Symbol, optionally with a red dot."""
     symbol_config = AppKit.NSImageSymbolConfiguration.configurationWithPointSize_weight_scale_(
-        14, AppKit.NSFontWeightRegular, 2  # NSImageSymbolScaleMedium
+        14, AppKit.NSFontWeightRegular, 2
     )
     image = AppKit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(
         symbol_name, None
     )
     image = image.imageWithSymbolConfiguration_(symbol_config)
-
-    # Make it a template image so it adapts to light/dark menu bar
     image.setTemplate_(True)
 
     if not with_dot:
         return image
 
-    # Draw the image with a red dot overlay
     size = image.size()
     new_image = AppKit.NSImage.alloc().initWithSize_(size)
     new_image.lockFocus()
@@ -74,7 +78,6 @@ def _make_icon(symbol_name: str, with_dot: bool = False) -> AppKit.NSImage:
         1.0,
     )
 
-    # Red dot in the top-right corner
     dot_size = 5
     dot_x = size.width - dot_size - 1
     dot_y = size.height - dot_size - 1
@@ -84,7 +87,6 @@ def _make_icon(symbol_name: str, with_dot: bool = False) -> AppKit.NSImage:
     AppKit.NSBezierPath.bezierPathWithOvalInRect_(dot_rect).fill()
 
     new_image.unlockFocus()
-    # Composite image with dot is NOT a template (to preserve the red color)
     new_image.setTemplate_(False)
 
     return new_image
@@ -95,9 +97,9 @@ class LocalWhisperApp(rumps.App):
         super().__init__("", quit_button=None)
 
         self.config = load_config()
-        self.recording = False
-        self.processing = False
-        self._cancelled = False
+        self._recording_source_app = None
+        self._last_raw_text = None
+        self.clipboard = ClipboardManager()
 
         self._icon_idle = _make_icon("mic")
         self._icon_recording = _make_icon("mic.fill", with_dot=True)
@@ -151,18 +153,19 @@ class LocalWhisperApp(rumps.App):
         self._populate_default_models()
         threading.Thread(target=self._refresh_models, daemon=True).start()
 
-        self.recorder = AudioRecorder(
-            sample_rate=self.config["sample_rate"],
-            recording_volume=self.config["recording_volume"],
-            min_audio_energy=self.config["min_audio_energy"],
-            min_recording_duration=self.config["min_recording_duration"],
-            input_device=self.config["input_device"],
-        )
-        self.transcriber = Transcriber(self.config)
-        threading.Thread(target=self.transcriber.preload, daemon=True).start()
-        self.postprocessor = PostProcessor(self.config)
+        self.engine = LocalWhisperEngine(self.config)
+
+        self.engine.on(RecordingStarted, self._on_recording_started)
+        self.engine.on(RecordingFailed, self._on_recording_failed)
+        self.engine.on(RecordingDone, self._on_recording_done)
+        self.engine.on(TranscriptionDone, self._on_transcription_done)
+        self.engine.on(TranscriptionFailed, self._on_transcription_failed)
+        self.engine.on(PostProcessingDone, self._on_post_processing_done)
+        self.engine.on(PostProcessingFailed, self._on_post_processing_failed)
+        self.engine.on(Cancelled, self._on_cancelled)
+
+        threading.Thread(target=self.engine._transcriber.preload, daemon=True).start()
         log.info("Post-processing model: %s / %s", self._current_backend, self._current_model)
-        self.clipboard = ClipboardManager()
 
         self.hotkey_listener = HotkeyListener(
             callback=self._on_hotkey,
@@ -172,7 +175,6 @@ class LocalWhisperApp(rumps.App):
         self.hotkey_listener.start()
 
     def _set_icon(self, nsimage: AppKit.NSImage):
-        """Set status bar icon directly from NSImage, bypassing rumps file-path logic."""
         if threading.current_thread() is not threading.main_thread():
             callAfter(self._set_icon, nsimage)
             return
@@ -224,7 +226,7 @@ class LocalWhisperApp(rumps.App):
 
         self._current_backend = backend
         self._current_model = model
-        self.postprocessor.switch(backend, model)
+        self.engine.update_config({"postprocessor": backend, "ollama_model" if backend == "ollama" else "openai_model": model})
 
         submenu = self._local_menu if backend == "ollama" else self._openai_menu
         if model in submenu:
@@ -244,7 +246,7 @@ class LocalWhisperApp(rumps.App):
         for key in self._speech_lang_menu:
             if isinstance(self._speech_lang_menu[key], rumps.MenuItem):
                 self._speech_lang_menu[key].state = 0
-        self.transcriber.language = code
+        self.engine.update_config({"language": code})
         if name in self._speech_lang_menu:
             self._speech_lang_menu[name].state = 1
         self._speech_lang_menu.title = f"Speech: {name}"
@@ -260,13 +262,13 @@ class LocalWhisperApp(rumps.App):
             if isinstance(self._translate_menu[key], rumps.MenuItem):
                 self._translate_menu[key].state = 0
         if language == "Off":
-            self.postprocessor.set_translate_to(None)
+            self.engine.update_config({"translate_to": None})
             self._translate_menu.title = "Translate: Off"
             if "Off" in self._translate_menu:
                 self._translate_menu["Off"].state = 1
             save_config({"translate_to": None})
         else:
-            self.postprocessor.set_translate_to(language)
+            self.engine.update_config({"translate_to": language})
             self._translate_menu.title = f"Translate: {language}"
             if language in self._translate_menu:
                 self._translate_menu[language].state = 1
@@ -287,84 +289,62 @@ class LocalWhisperApp(rumps.App):
         threading.Thread(target=do_login, daemon=True).start()
 
     def _on_hotkey(self):
-        callAfter(self._on_hotkey_main)
-
-    def _on_hotkey_main(self):
-        if self.processing:
-            return
-
-        if self.recording:
-            self._stop_recording()
-        else:
-            self._start_recording()
+        callAfter(lambda: self.engine.toggle())
 
     def _on_cancel(self) -> bool:
-        """Handle Escape press. Returns True if the event should be swallowed."""
-        if not self.recording and not self.processing:
+        if self.engine.state == "idle":
             return False
-        callAfter(self._on_cancel_main)
+        callAfter(lambda: self.engine.cancel())
         return True
 
-    def _on_cancel_main(self):
-        if self.recording:
-            self.recording = False
-            self.recorder.stop()
-            self._set_icon(self._icon_idle)
-            play_sound(self.config["sound_cancel"])
-        elif self.processing:
-            self._cancelled = True
-            self.processing = False
-            self._set_icon(self._icon_idle)
-            play_sound(self.config["sound_cancel"])
+    def _on_recording_started(self, event):
+        callAfter(self._handle_recording_started)
 
-    def _start_recording(self):
+    def _handle_recording_started(self):
         self._recording_source_app = focus.capture()
-        self.recording = True
-        self._cancelled = False
         self._set_icon(self._icon_recording)
         play_sound(self.config["sound_start"])
-        try:
-            self.recorder.start()
-        except Exception:
-            log.exception("Failed to start recording")
-            self.recording = False
-            self._set_icon(self._icon_idle)
-            play_sound(self.config["sound_error"])
 
-    def _stop_recording(self):
-        self.recording = False
-        self.processing = True
+    def _on_recording_failed(self, event):
+        callAfter(self._handle_recording_failed)
+
+    def _handle_recording_failed(self):
+        self._set_icon(self._icon_idle)
+        play_sound(self.config["sound_error"])
+
+    def _on_recording_done(self, event):
+        callAfter(self._handle_recording_done)
+
+    def _handle_recording_done(self):
         self._set_icon(self._icon_processing)
         play_sound(self.config["sound_stop"])
-        audio_data = self.recorder.stop()
 
-        threading.Thread(target=self._process, args=(audio_data,), daemon=True).start()
+    def _on_transcription_done(self, event):
+        self._last_raw_text = event.raw_text
 
-    def _process(self, audio_data: bytes):
-        try:
-            if not audio_data or self._cancelled:
-                log.warning("Skipping processing: audio_data=%d bytes, cancelled=%s",
-                            len(audio_data) if audio_data else 0, self._cancelled)
-                return
+    def _on_transcription_failed(self, event):
+        log.error("transcription failed: %s", event.error)
+        callAfter(self._set_icon, self._icon_idle)
+        play_sound(self.config["sound_error"])
 
-            raw_text = self.transcriber.transcribe(audio_data)
-            if not raw_text or self._cancelled:
-                log.warning("No transcription result: raw_text=%r, cancelled=%s", raw_text, self._cancelled)
-                return
+    def _on_post_processing_done(self, event):
+        callAfter(self._finish, event.raw_text, event.processed_text)
 
-            processed_text = self.postprocessor.process(raw_text)
-            if self._cancelled:
-                return
+    def _on_post_processing_failed(self, event):
+        callAfter(self._finish, event.raw_text, event.raw_text)
 
-            focus.restore(self._recording_source_app)
-            self.clipboard.paste(processed_text)
-            save_to_history(raw_text, processed_text)
-        except Exception:
-            log.exception("Processing failed")
-        finally:
-            self.processing = False
-            self._cancelled = False
-            self._set_icon(self._icon_idle)
+    def _on_cancelled(self, event):
+        callAfter(self._handle_cancelled)
+
+    def _handle_cancelled(self):
+        self._set_icon(self._icon_idle)
+        play_sound(self.config["sound_cancel"])
+
+    def _finish(self, raw_text, processed_text):
+        focus.restore(self._recording_source_app)
+        self.clipboard.paste(processed_text)
+        save_to_history(raw_text, processed_text)
+        self._set_icon(self._icon_idle)
 
 
 def main():
