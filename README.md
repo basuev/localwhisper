@@ -1,4 +1,4 @@
-# LocalWhisper
+# localwhisper
 
 macOS status bar app for local speech-to-text using MLX Whisper on Apple Silicon, with LLM post-processing via Ollama or OpenAI.
 
