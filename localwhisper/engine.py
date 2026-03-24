@@ -7,7 +7,6 @@ import soundfile as sf
 
 from .events import (
     Cancelled,
-    EngineReady,
     PostProcessingDone,
     PostProcessingFailed,
     PostProcessingStarted,
