@@ -13,6 +13,8 @@ MODULES = [
     "localwhisper.clipboard",
     "localwhisper.hotkey",
     "localwhisper.preflight",
+    "localwhisper.events",
+    "localwhisper.engine",
     "localwhisper.app",
 ]
 
