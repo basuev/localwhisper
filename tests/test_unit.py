@@ -793,3 +793,139 @@ def test_engine_transcribe_while_recording_ignored(default_config):
     engine.transcribe(b"audio")
     mock_transcriber.transcribe.assert_not_called()
 
+
+def test_engine_full_pipeline_events(default_config):
+    from unittest.mock import Mock
+    from localwhisper.events import (
+        RecordingStarted, RecordingDone,
+        TranscriptionStarted, TranscriptionDone,
+        PostProcessingStarted, PostProcessingDone,
+    )
+    import threading as _threading
+
+    done = _threading.Event()
+    mock_recorder = Mock()
+    mock_recorder.stop.return_value = _make_wav_bytes()
+
+    mock_transcriber = Mock()
+    mock_transcriber.transcribe.return_value = "test"
+    mock_postprocessor = Mock()
+    mock_postprocessor.process.return_value = "Test."
+
+    engine = _make_engine(
+        default_config,
+        recorder=mock_recorder,
+        transcriber=mock_transcriber,
+        postprocessor=mock_postprocessor,
+    )
+
+    events = []
+    engine.on(RecordingStarted, lambda e: events.append(("recording_started", e)))
+    engine.on(RecordingDone, lambda e: events.append(("recording_done", e)))
+    engine.on(TranscriptionStarted, lambda e: events.append(("transcription_started", e)))
+    engine.on(TranscriptionDone, lambda e: events.append(("transcription_done", e)))
+    engine.on(PostProcessingStarted, lambda e: events.append(("pp_started", e)))
+    engine.on(PostProcessingDone, lambda e: (events.append(("pp_done", e)), done.set()))
+
+    engine.toggle()
+    engine.toggle()
+    done.wait(timeout=2)
+
+    event_names = [name for name, _ in events]
+    assert event_names == [
+        "recording_started",
+        "recording_done",
+        "transcription_started",
+        "transcription_done",
+        "pp_started",
+        "pp_done",
+    ]
+
+
+def test_engine_transcription_failed_event(default_config):
+    from unittest.mock import Mock
+    from localwhisper.events import TranscriptionFailed
+    import threading as _threading
+
+    done = _threading.Event()
+    mock_transcriber = Mock()
+    mock_transcriber.transcribe.side_effect = RuntimeError("model crash")
+    mock_postprocessor = Mock()
+
+    engine = _make_engine(
+        default_config,
+        transcriber=mock_transcriber,
+        postprocessor=mock_postprocessor,
+    )
+
+    received = []
+    engine.on(TranscriptionFailed, lambda e: (received.append(e), done.set()))
+
+    engine.transcribe(b"audio")
+    done.wait(timeout=2)
+
+    assert len(received) == 1
+    assert "model crash" in received[0].error
+    assert engine.state == "idle"
+    mock_postprocessor.process.assert_not_called()
+
+
+def test_engine_empty_transcription_skips_postprocessing(default_config):
+    from unittest.mock import Mock
+    from localwhisper.events import TranscriptionDone, PostProcessingStarted
+    import threading as _threading
+
+    done = _threading.Event()
+    mock_transcriber = Mock()
+    mock_transcriber.transcribe.return_value = ""
+    mock_postprocessor = Mock()
+
+    engine = _make_engine(
+        default_config,
+        transcriber=mock_transcriber,
+        postprocessor=mock_postprocessor,
+    )
+
+    td_events = []
+    pp_events = []
+    engine.on(TranscriptionDone, lambda e: (td_events.append(e), done.set()))
+    engine.on(PostProcessingStarted, lambda e: pp_events.append(e))
+
+    engine.transcribe(b"audio")
+    done.wait(timeout=2)
+
+    assert len(td_events) == 1
+    assert td_events[0].raw_text == ""
+    assert len(pp_events) == 0
+    mock_postprocessor.process.assert_not_called()
+
+
+def test_engine_update_config_language(default_config):
+    from unittest.mock import Mock
+
+    mock_transcriber = Mock()
+    mock_transcriber.language = "ru"
+    engine = _make_engine(default_config, transcriber=mock_transcriber)
+
+    engine.update_config({"language": "en"})
+    assert mock_transcriber.language == "en"
+
+
+def test_engine_update_config_model(default_config):
+    from unittest.mock import Mock
+
+    mock_postprocessor = Mock()
+    engine = _make_engine(default_config, postprocessor=mock_postprocessor)
+
+    engine.update_config({"postprocessor": "openai", "openai_model": "gpt-5.4"})
+    mock_postprocessor.switch.assert_called_once_with("openai", "gpt-5.4")
+
+
+def test_engine_shutdown(default_config):
+    from unittest.mock import Mock
+
+    mock_transcriber = Mock()
+    engine = _make_engine(default_config, transcriber=mock_transcriber)
+    engine.shutdown()
+    mock_transcriber._unload.assert_called_once()
+
