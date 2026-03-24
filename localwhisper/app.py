@@ -19,7 +19,6 @@ from .events import (
     RecordingDone,
     RecordingFailed,
     RecordingStarted,
-    TranscriptionDone,
     TranscriptionFailed,
 )
 from .history import save_to_history
@@ -98,7 +97,6 @@ class LocalWhisperApp(rumps.App):
 
         self.config = load_config()
         self._recording_source_app = None
-        self._last_raw_text = None
         self.clipboard = ClipboardManager()
 
         self._icon_idle = _make_icon("mic")
@@ -158,7 +156,6 @@ class LocalWhisperApp(rumps.App):
         self.engine.on(RecordingStarted, self._on_recording_started)
         self.engine.on(RecordingFailed, self._on_recording_failed)
         self.engine.on(RecordingDone, self._on_recording_done)
-        self.engine.on(TranscriptionDone, self._on_transcription_done)
         self.engine.on(TranscriptionFailed, self._on_transcription_failed)
         self.engine.on(PostProcessingDone, self._on_post_processing_done)
         self.engine.on(PostProcessingFailed, self._on_post_processing_failed)
@@ -319,8 +316,6 @@ class LocalWhisperApp(rumps.App):
         self._set_icon(self._icon_processing)
         play_sound(self.config["sound_stop"])
 
-    def _on_transcription_done(self, event):
-        self._last_raw_text = event.raw_text
 
     def _on_transcription_failed(self, event):
         log.error("transcription failed: %s", event.error)

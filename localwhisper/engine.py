@@ -58,7 +58,7 @@ class LocalWhisperEngine:
             pass
 
     def _emit(self, event) -> None:
-        for cb in self._listeners.get(type(event), []):
+        for cb in list(self._listeners.get(type(event), [])):
             try:
                 cb(event)
             except Exception:
