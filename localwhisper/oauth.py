@@ -124,10 +124,9 @@ def get_account_id() -> str | None:
     if not token_data or not token_data.get("access_token"):
         return None
     claims = _parse_jwt_claims(token_data["access_token"])
-    return (
-        claims.get("chatgpt_account_id")
-        or claims.get("https://api.openai.com/auth", {}).get("chatgpt_account_id")
-    )
+    return claims.get("chatgpt_account_id") or claims.get(
+        "https://api.openai.com/auth", {}
+    ).get("chatgpt_account_id")
 
 
 def get_valid_token() -> str | None:
@@ -161,7 +160,8 @@ class _CallbackHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html")
             self.end_headers()
             safe_error = html_mod.escape(error)
-            self.wfile.write(f"<html><body><p>Login failed: {safe_error}</p></body></html>".encode())
+            body = f"<html><body><p>Login failed: {safe_error}</p></body></html>"
+            self.wfile.write(body.encode())
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
 
@@ -178,7 +178,9 @@ class _CallbackHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.end_headers()
-        self.wfile.write(b"<html><body><p>Login successful. You can close this tab.</p></body></html>")
+        body = b"<html><body><p>Login successful. "
+        body += b"You can close this tab.</p></body></html>"
+        self.wfile.write(body)
 
         threading.Thread(target=self.server.shutdown, daemon=True).start()
 

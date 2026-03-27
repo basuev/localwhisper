@@ -2,13 +2,22 @@ import io
 import logging
 import subprocess
 import threading
-import time
 
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
 
 log = logging.getLogger(__name__)
+
+
+def _refresh_device_list():
+    sd._terminate()
+    sd._initialize()
+
+
+def list_input_devices() -> list[dict]:
+    _refresh_device_list()
+    return [d for d in sd.query_devices() if d["max_input_channels"] > 0]
 
 
 def _resample(audio: np.ndarray, orig_rate: int, target_rate: int) -> np.ndarray:
@@ -27,7 +36,7 @@ class AudioRecorder:
     def __init__(
         self,
         sample_rate: int = 16000,
-        recording_volume: int = 100,
+        recording_volume: int | None = 100,
         min_audio_energy: float = 0.003,
         min_recording_duration: float = 0.3,
         input_device: str | int | None = None,
@@ -42,11 +51,13 @@ class AudioRecorder:
         self._lock = threading.Lock()
         self._saved_volume: int | None = None
         self._device_rate: int = sample_rate
+        self._chunk_callback = None
 
     def _get_input_volume(self) -> int:
         result = subprocess.run(
             ["osascript", "-e", "input volume of (get volume settings)"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         return int(result.stdout.strip())
 
@@ -56,12 +67,15 @@ class AudioRecorder:
             capture_output=True,
         )
 
-    def _find_device(self) -> dict:
+    def _find_device(self, refresh: bool = False) -> dict:
+        if refresh:
+            _refresh_device_list()
         if isinstance(self.input_device, int):
             return sd.query_devices(self.input_device)
         if isinstance(self.input_device, str):
             for dev in sd.query_devices():
-                if self.input_device.lower() in dev["name"].lower() and dev["max_input_channels"] > 0:
+                name_match = self.input_device.lower() in dev["name"].lower()
+                if name_match and dev["max_input_channels"] > 0:
                     return dev
             raise ValueError(f"No input device matching '{self.input_device}'")
         return sd.query_devices(kind="input")
@@ -69,8 +83,12 @@ class AudioRecorder:
     def _try_open_stream(self, device_info: dict) -> bool:
         self._device_rate = int(device_info["default_samplerate"])
         device_index = device_info["index"]
-        log.info("Trying input device: %s (index=%d, rate=%d)",
-                 device_info["name"], device_index, self._device_rate)
+        log.info(
+            "Trying input device: %s (index=%d, rate=%d)",
+            device_info["name"],
+            device_index,
+            self._device_rate,
+        )
         try:
             self._stream = sd.InputStream(
                 device=device_index,
@@ -86,9 +104,17 @@ class AudioRecorder:
             log.warning("Failed to open device '%s': %s", device_info["name"], e)
             return False
 
-    def start(self):
-        self._saved_volume = self._get_input_volume()
-        self._set_input_volume(self.recording_volume)
+    def _apply_volume_async(self):
+        try:
+            self._saved_volume = self._get_input_volume()
+            self._set_input_volume(self.recording_volume)
+        except Exception:
+            log.warning("failed to set recording volume")
+
+    def start(self, chunk_callback=None):
+        self._chunk_callback = chunk_callback
+        if self.recording_volume is not None:
+            threading.Thread(target=self._apply_volume_async, daemon=True).start()
 
         with self._lock:
             self._frames = []
@@ -98,22 +124,33 @@ class AudioRecorder:
         if self._try_open_stream(primary):
             return
 
+        primary = self._find_device(refresh=True)
+        if self._try_open_stream(primary):
+            return
+
         primary_index = primary["index"]
         fallbacks = [
-            d for d in sd.query_devices()
+            d
+            for d in sd.query_devices()
             if d["max_input_channels"] > 0 and d["index"] != primary_index
         ]
         for dev in fallbacks:
             if self._try_open_stream(dev):
                 return
 
-        raise sd.PortAudioError("All input devices failed")
+        raise sd.PortAudioError("all input devices failed")
 
     def _callback(self, indata, frames, time, status):
         if self._recording:
-            self._frames.append(indata.copy())
+            data = indata.copy()
+            self._frames.append(data)
+            if self._chunk_callback:
+                flat = data.flatten()
+                if self._device_rate != self.sample_rate:
+                    flat = _resample(flat, self._device_rate, self.sample_rate)
+                self._chunk_callback(flat)
 
-    def stop(self) -> bytes:
+    def stop_array(self) -> np.ndarray | None:
         with self._lock:
             self._recording = False
 
@@ -121,12 +158,17 @@ class AudioRecorder:
         self._stream.close()
 
         if self._saved_volume is not None:
-            self._set_input_volume(self._saved_volume)
+            vol = self._saved_volume
             self._saved_volume = None
+            threading.Thread(
+                target=self._set_input_volume,
+                args=(vol,),
+                daemon=True,
+            ).start()
 
         if not self._frames:
-            log.warning("No audio frames captured")
-            return b""
+            log.warning("no audio frames captured")
+            return None
 
         audio = np.concatenate(self._frames, axis=0).flatten()
 
@@ -135,16 +177,31 @@ class AudioRecorder:
 
         duration = len(audio) / self.sample_rate
         if duration < self.min_recording_duration:
-            log.warning("Recording too short: %.2fs < %.2fs", duration, self.min_recording_duration)
-            return b""
+            log.warning(
+                "recording too short: %.2fs < %.2fs",
+                duration,
+                self.min_recording_duration,
+            )
+            return None
 
-        rms = float(np.sqrt(np.mean(audio ** 2)))
+        rms = float(np.sqrt(np.mean(audio**2)))
         if rms < self.min_audio_energy:
-            log.warning("Audio energy too low: %.6f < %.3f", rms, self.min_audio_energy)
+            log.warning("audio energy too low: %.6f < %.3f", rms, self.min_audio_energy)
+            return None
+
+        log.info(
+            "recording: %.2fs, RMS=%.4f, frames=%d, device_rate=%d",
+            duration,
+            rms,
+            len(self._frames),
+            self._device_rate,
+        )
+        return audio
+
+    def stop(self) -> bytes:
+        audio = self.stop_array()
+        if audio is None:
             return b""
-
-        log.info("Recording: %.2fs, RMS=%.4f, frames=%d, device_rate=%d", duration, rms, len(self._frames), self._device_rate)
-
         buf = io.BytesIO()
         sf.write(buf, audio, self.sample_rate, format="WAV", subtype="FLOAT")
         return buf.getvalue()

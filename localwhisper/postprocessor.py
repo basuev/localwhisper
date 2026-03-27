@@ -79,7 +79,10 @@ class PostProcessor:
         try:
             token = oauth.get_valid_token()
             if not token:
-                log.error("OpenAI post-processing failed: not logged in (use Login in the menu)")
+                log.error(
+                    "OpenAI post-processing failed: "
+                    "not logged in (use Login in the menu)"
+                )
                 return text
 
             headers = {"Authorization": f"Bearer {token}"}
@@ -101,8 +104,16 @@ class PostProcessor:
                 stream=True,
             )
             if not resp.ok:
-                body = resp.text[:500] if not resp.headers.get("transfer-encoding") else resp.content[:500].decode(errors="replace")
-                log.error("OpenAI post-processing failed (HTTP %d): %s", resp.status_code, body)
+                body = (
+                    resp.text[:500]
+                    if not resp.headers.get("transfer-encoding")
+                    else resp.content[:500].decode(errors="replace")
+                )
+                log.error(
+                    "OpenAI post-processing failed (HTTP %d): %s",
+                    resp.status_code,
+                    body,
+                )
             resp.raise_for_status()
             return self._parse_sse_response(resp, text)
         except Exception:

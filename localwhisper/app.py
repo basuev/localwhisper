@@ -3,12 +3,10 @@ import sys
 import threading
 
 import AppKit
-from PyObjCTools.AppHelper import callAfter
 import rumps
+from PyObjCTools.AppHelper import callAfter
 
-log = logging.getLogger(__name__)
-
-from . import oauth
+from . import focus, oauth
 from .clipboard import ClipboardManager
 from .config import load_config, save_config
 from .engine import LocalWhisperEngine
@@ -24,8 +22,10 @@ from .events import (
 from .history import save_to_history
 from .hotkey import HotkeyListener
 from .models import fetch_ollama_models, load_codex_models
+from .recorder import list_input_devices
 from .sounds import play_sound
-from . import focus
+
+log = logging.getLogger(__name__)
 
 SPEECH_LANGUAGES = [
     ("ru", "Russian"),
@@ -54,8 +54,10 @@ TRANSLATE_LANGUAGES = [
 
 
 def _make_icon(symbol_name: str, with_dot: bool = False) -> AppKit.NSImage:
-    symbol_config = AppKit.NSImageSymbolConfiguration.configurationWithPointSize_weight_scale_(
-        14, AppKit.NSFontWeightRegular, 2
+    symbol_config = (
+        AppKit.NSImageSymbolConfiguration.configurationWithPointSize_weight_scale_(
+            14, AppKit.NSFontWeightRegular, 2
+        )
     )
     image = AppKit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(
         symbol_name, None
@@ -117,19 +119,27 @@ class LocalWhisperApp(rumps.App):
 
         token = oauth.load_token()
         login_title = "Logged in" if token else "Login"
-        self._openai_login_item = rumps.MenuItem(login_title, callback=self._on_openai_login)
+        self._openai_login_item = rumps.MenuItem(
+            login_title, callback=self._on_openai_login
+        )
         self._openai_menu[self._openai_login_item.title] = self._openai_login_item
 
         self._model_menu[self._local_menu.title] = self._local_menu
         self._model_menu[self._openai_menu.title] = self._openai_menu
 
         current_lang_name = next(
-            (name for code, name in SPEECH_LANGUAGES if code == self.config["language"]),
+            (
+                name
+                for code, name in SPEECH_LANGUAGES
+                if code == self.config["language"]
+            ),
             self.config["language"],
         )
         self._speech_lang_menu = rumps.MenuItem(f"Speech: {current_lang_name}")
         for code, name in SPEECH_LANGUAGES:
-            item = rumps.MenuItem(name, callback=self._make_speech_lang_callback(code, name))
+            item = rumps.MenuItem(
+                name, callback=self._make_speech_lang_callback(code, name)
+            )
             if code == self.config["language"]:
                 item.state = 1
             self._speech_lang_menu[name] = item
@@ -139,14 +149,47 @@ class LocalWhisperApp(rumps.App):
         self._translate_menu = rumps.MenuItem(f"Translate: {translate_label}")
         for lang in TRANSLATE_LANGUAGES:
             item = rumps.MenuItem(lang, callback=self._make_translate_callback(lang))
-            if lang == "Off" and not current_translate:
-                item.state = 1
-            elif lang == current_translate:
+            if lang == "Off" and not current_translate or lang == current_translate:
                 item.state = 1
             self._translate_menu[lang] = item
 
-        quit_item = rumps.MenuItem("Quit", callback=lambda _: rumps.quit_application(), key="q")
-        self.menu = [self._model_menu, self._speech_lang_menu, self._translate_menu, None, quit_item]
+        current_device = self.config.get("input_device")
+        device_label = current_device if current_device else "system default"
+        self._device_menu = rumps.MenuItem(f"Input: {device_label}")
+        self._populate_devices()
+
+        self._whisper_menu = rumps.MenuItem("Whisper model")
+        self._populate_whisper_models()
+
+        pp_state = self.config.get("postprocess", True)
+        self._postprocess_item = rumps.MenuItem(
+            "Post-processing",
+            callback=self._toggle_postprocess,
+        )
+        self._postprocess_item.state = 1 if pp_state else 0
+
+        streaming_state = self.config.get("streaming", True)
+        self._streaming_item = rumps.MenuItem(
+            "Streaming",
+            callback=self._toggle_streaming,
+        )
+        self._streaming_item.state = 1 if streaming_state else 0
+
+        quit_item = rumps.MenuItem(
+            "Quit", callback=lambda _: rumps.quit_application(), key="q"
+        )
+        self.menu = [
+            self._model_menu,
+            self._speech_lang_menu,
+            self._translate_menu,
+            self._device_menu,
+            None,
+            self._whisper_menu,
+            self._postprocess_item,
+            self._streaming_item,
+            None,
+            quit_item,
+        ]
 
         self._populate_default_models()
         threading.Thread(target=self._refresh_models, daemon=True).start()
@@ -162,7 +205,9 @@ class LocalWhisperApp(rumps.App):
         self.engine.on(Cancelled, self._on_cancelled)
 
         threading.Thread(target=self.engine._transcriber.preload, daemon=True).start()
-        log.info("Post-processing model: %s / %s", self._current_backend, self._current_model)
+        log.info(
+            "Post-processing model: %s / %s", self._current_backend, self._current_model
+        )
 
         self.hotkey_listener = HotkeyListener(
             callback=self._on_hotkey,
@@ -176,10 +221,10 @@ class LocalWhisperApp(rumps.App):
             callAfter(self._set_icon, nsimage)
             return
         self._icon_nsimage = nsimage
-        try:
+        import contextlib
+
+        with contextlib.suppress(AttributeError):
             self._nsapp.setStatusBarIcon()
-        except AttributeError:
-            pass
 
     def _model_menu_title(self) -> str:
         backend_label = "Local" if self._current_backend == "ollama" else "OpenAI"
@@ -187,15 +232,23 @@ class LocalWhisperApp(rumps.App):
 
     def _populate_default_models(self):
         default_model = self.config["ollama_model"]
-        item = rumps.MenuItem(default_model, callback=self._make_model_callback("ollama", default_model))
+        item = rumps.MenuItem(
+            default_model, callback=self._make_model_callback("ollama", default_model)
+        )
         if self._current_backend == "ollama" and self._current_model == default_model:
             item.state = 1
         self._local_menu[default_model] = item
 
         codex_models = load_codex_models()
-        openai_models = codex_models if codex_models else [self.config.get("openai_model", "codex-gpt-5.4")]
+        openai_models = (
+            codex_models
+            if codex_models
+            else [self.config.get("openai_model", "codex-gpt-5.4")]
+        )
         for name in openai_models:
-            item = rumps.MenuItem(name, callback=self._make_model_callback("openai", name))
+            item = rumps.MenuItem(
+                name, callback=self._make_model_callback("openai", name)
+            )
             if self._current_backend == "openai" and self._current_model == name:
                 item.state = 1
             self._openai_menu[name] = item
@@ -205,7 +258,9 @@ class LocalWhisperApp(rumps.App):
         if ollama_models:
             self._local_menu.clear()
             for name in ollama_models:
-                item = rumps.MenuItem(name, callback=self._make_model_callback("ollama", name))
+                item = rumps.MenuItem(
+                    name, callback=self._make_model_callback("ollama", name)
+                )
                 if self._current_backend == "ollama" and self._current_model == name:
                     item.state = 1
                 self._local_menu[name] = item
@@ -213,6 +268,7 @@ class LocalWhisperApp(rumps.App):
     def _make_model_callback(self, backend: str, model: str):
         def callback(_):
             self._select_model(backend, model)
+
         return callback
 
     def _select_model(self, backend: str, model: str):
@@ -223,7 +279,12 @@ class LocalWhisperApp(rumps.App):
 
         self._current_backend = backend
         self._current_model = model
-        self.engine.update_config({"postprocessor": backend, "ollama_model" if backend == "ollama" else "openai_model": model})
+        self.engine.update_config(
+            {
+                "postprocessor": backend,
+                "ollama_model" if backend == "ollama" else "openai_model": model,
+            }
+        )
 
         submenu = self._local_menu if backend == "ollama" else self._openai_menu
         if model in submenu:
@@ -237,6 +298,7 @@ class LocalWhisperApp(rumps.App):
     def _make_speech_lang_callback(self, code: str, name: str):
         def callback(_):
             self._select_speech_language(code, name)
+
         return callback
 
     def _select_speech_language(self, code: str, name: str):
@@ -252,6 +314,7 @@ class LocalWhisperApp(rumps.App):
     def _make_translate_callback(self, language: str):
         def callback(_):
             self._select_translate(language)
+
         return callback
 
     def _select_translate(self, language: str):
@@ -270,6 +333,144 @@ class LocalWhisperApp(rumps.App):
             if language in self._translate_menu:
                 self._translate_menu[language].state = 1
             save_config({"translate_to": language})
+
+    def _populate_devices(self):
+        import contextlib
+
+        with contextlib.suppress(AttributeError):
+            self._device_menu.clear()
+        current_device = self.config.get("input_device")
+
+        default_item = rumps.MenuItem(
+            "system default",
+            callback=self._make_device_callback(None),
+        )
+        if current_device is None:
+            default_item.state = 1
+        self._device_menu["system default"] = default_item
+
+        try:
+            devices = list_input_devices()
+        except Exception:
+            devices = []
+
+        for dev in devices:
+            name = dev["name"]
+            item = rumps.MenuItem(name, callback=self._make_device_callback(name))
+            if current_device and current_device == name:
+                item.state = 1
+            self._device_menu[name] = item
+
+        refresh_item = rumps.MenuItem(
+            "Refresh", callback=lambda _: self._refresh_devices()
+        )
+        self._device_menu[refresh_item.title] = refresh_item
+
+    def _refresh_devices(self):
+        def do_refresh():
+            self._populate_devices()
+
+        threading.Thread(target=do_refresh, daemon=True).start()
+
+    def _make_device_callback(self, device_name: str | None):
+        def callback(_):
+            self._select_device(device_name)
+
+        return callback
+
+    def _select_device(self, device_name: str | None):
+        for key in self._device_menu:
+            item = self._device_menu[key]
+            if isinstance(item, rumps.MenuItem):
+                item.state = 0
+
+        self.engine.update_config({"input_device": device_name})
+
+        label = device_name if device_name else "system default"
+        check_key = label
+        if check_key in self._device_menu:
+            self._device_menu[check_key].state = 1
+
+        self._device_menu.title = f"Input: {label}"
+        log.info("switched input device: %s", label)
+        save_config({"input_device": device_name})
+
+    def _populate_whisper_models(self):
+        models = [
+            ("mlx-community/whisper-large-v3-mlx", "large-v3 (best quality)"),
+            ("mlx-community/whisper-large-v3-turbo", "large-v3-turbo (fast)"),
+            ("mlx-community/whisper-small-mlx", "small (fastest)"),
+        ]
+        current = self.config.get("whisper_model", "")
+        for model_id, label in models:
+            item = rumps.MenuItem(label, callback=self._make_whisper_callback(model_id))
+            if model_id == current:
+                item.state = 1
+            self._whisper_menu[label] = item
+
+    def _make_whisper_callback(self, model_id: str):
+        def callback(_):
+            self._select_whisper_model(model_id)
+
+        return callback
+
+    def _select_whisper_model(self, model_id: str):
+        from .preflight import is_model_cached
+
+        for key in self._whisper_menu:
+            item = self._whisper_menu[key]
+            if isinstance(item, rumps.MenuItem):
+                item.state = 0
+
+        self.config["whisper_model"] = model_id
+        self.engine.update_config({"whisper_model": model_id})
+        save_config({"whisper_model": model_id})
+
+        for key in self._whisper_menu:
+            item = self._whisper_menu[key]
+            if isinstance(item, rumps.MenuItem) and model_id in key:
+                break
+        else:
+            item = None
+        if item:
+            item.state = 1
+
+        log.info("switched whisper model: %s", model_id)
+
+        if not is_model_cached(model_id):
+            log.info("model not cached, starting download: %s", model_id)
+            threading.Thread(
+                target=self._download_whisper_model,
+                args=(model_id,),
+                daemon=True,
+            ).start()
+
+    def _download_whisper_model(self, model_id: str):
+        try:
+            from huggingface_hub import snapshot_download
+
+            snapshot_download(repo_id=model_id)
+            log.info("model downloaded: %s", model_id)
+            if self.config.get("whisper_model") == model_id:
+                self.engine._transcriber.preload()
+        except Exception:
+            log.exception("failed to download model: %s", model_id)
+
+    def _toggle_postprocess(self, sender):
+        new_state = not self.config.get("postprocess", True)
+        self.config["postprocess"] = new_state
+        self.engine.update_config({"postprocess": new_state})
+        save_config({"postprocess": new_state})
+        sender.state = 1 if new_state else 0
+        log.info("post-processing: %s", "on" if new_state else "off")
+
+    def _toggle_streaming(self, sender):
+        new_state = not self.config.get("streaming", True)
+        self.config["streaming"] = new_state
+        self.engine.update_config({"streaming": new_state})
+        save_config({"streaming": new_state})
+        sender.state = 1 if new_state else 0
+        log.info("streaming: %s", "on" if new_state else "off")
 
     def _on_openai_login(self, _):
         self._openai_login_item.title = "Logging in..."
@@ -315,7 +516,6 @@ class LocalWhisperApp(rumps.App):
     def _handle_recording_done(self):
         self._set_icon(self._icon_processing)
         play_sound(self.config["sound_stop"])
-
 
     def _on_transcription_failed(self, event):
         log.error("transcription failed: %s", event.error)

@@ -1,4 +1,3 @@
-import os
 import shutil
 from pathlib import Path
 
@@ -11,11 +10,13 @@ DEFAULT_CONFIG = {
     "ollama_url": "http://localhost:11434",
     "postprocess_prompt": (
         "You are a minimal post-processor for Russian speech-to-text. "
-        "The input is a dictated message in Russian, often addressed informally to an AI assistant.\n\n"
+        "The input is a dictated message in Russian, "
+        "often addressed informally to an AI assistant.\n\n"
         "Rules:\n"
         "1. Fix punctuation and capitalization only.\n"
         "2. English technical terms must be written as whole words in Latin script: "
-        "commit, deploy, rollback, endpoint, health check, API, Kubernetes, SaaS, etc.\n"
+        "commit, deploy, rollback, endpoint, health check, "
+        "API, Kubernetes, SaaS, etc.\n"
         "3. Russian words must stay ENTIRELY in Cyrillic. "
         "NEVER replace individual Cyrillic letters with Latin lookalikes. "
         "For example: 'булгур' must stay as 'булгур', NOT 'булgур'.\n"
@@ -30,12 +31,12 @@ DEFAULT_CONFIG = {
         "when they only signal a self-correction. "
         "Keep them when they carry meaning (e.g. disagreement).\n\n"
         "Examples of false-start cleanup:\n"
-        "- \"Нам нужно сделать деплой, нет, нам нужно сначала прогнать тесты\" "
-        "-> \"Нам нужно сначала прогнать тесты\"\n"
-        "- \"Нужно закоммитить... запушить изменения\" "
-        "-> \"Нужно запушить изменения\"\n"
-        "- \"Нужно нужно сделать ревью\" "
-        "-> \"Нужно сделать ревью\"\n\n"
+        '- "Нам нужно сделать деплой, нет, нам нужно сначала прогнать тесты" '
+        '-> "Нам нужно сначала прогнать тесты"\n'
+        '- "Нужно закоммитить... запушить изменения" '
+        '-> "Нужно запушить изменения"\n'
+        '- "Нужно нужно сделать ревью" '
+        '-> "Нужно сделать ревью"\n\n'
         "Output only the corrected text, nothing else."
     ),
     "hotkey_keycode": 61,
@@ -52,6 +53,9 @@ DEFAULT_CONFIG = {
     "postprocessor": "ollama",
     "openai_model": "gpt-5.4",
     "translate_to": None,
+    "postprocess": True,
+    "streaming": True,
+    "chunk_duration": 5.0,
 }
 
 CONFIG_DIR = Path.home() / ".config" / "localwhisper"
@@ -68,7 +72,9 @@ def load_config(config_path: Path | None = None) -> dict:
             shutil.copy(example, config_path)
         else:
             with open(config_path, "w") as f:
-                yaml.dump(DEFAULT_CONFIG, f, default_flow_style=False, allow_unicode=True)
+                yaml.dump(
+                    DEFAULT_CONFIG, f, default_flow_style=False, allow_unicode=True
+                )
 
     with open(config_path) as f:
         user_config = yaml.safe_load(f) or {}

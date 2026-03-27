@@ -5,7 +5,7 @@ import AppKit
 
 log = logging.getLogger(__name__)
 
-_ACTIVATE_DELAY = 0.15
+_ACTIVATE_DELAY = 0.05
 
 
 def capture():

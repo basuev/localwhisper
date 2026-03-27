@@ -1,9 +1,6 @@
-import io
 import logging
 import threading
 from collections import defaultdict
-
-import soundfile as sf
 
 from .events import (
     Cancelled,
@@ -17,9 +14,10 @@ from .events import (
     TranscriptionFailed,
     TranscriptionStarted,
 )
-from .recorder import AudioRecorder
-from .transcriber import Transcriber
 from .postprocessor import PostProcessor
+from .recorder import AudioRecorder
+from .streaming import ChunkAccumulator, StreamingTranscriber
+from .transcriber import Transcriber
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +31,8 @@ class LocalWhisperEngine:
         self._cancelled = False
         self._shutdown = False
         self._processing_thread = None
+        self._streaming_transcriber = None
+        self._chunk_accumulator = None
 
         self._recorder = AudioRecorder(
             sample_rate=config["sample_rate"],
@@ -52,10 +52,10 @@ class LocalWhisperEngine:
         self._listeners[event_type].append(callback)
 
     def off(self, event_type: type, callback) -> None:
-        try:
+        import contextlib
+
+        with contextlib.suppress(ValueError):
             self._listeners[event_type].remove(callback)
-        except ValueError:
-            pass
 
     def _emit(self, event) -> None:
         for cb in list(self._listeners.get(type(event), [])):
@@ -88,6 +88,10 @@ class LocalWhisperEngine:
 
         if prev == "recording":
             self._recorder.stop()
+            if self._streaming_transcriber:
+                self._streaming_transcriber.cancel()
+                self._streaming_transcriber = None
+                self._chunk_accumulator = None
             self._emit(Cancelled(stage="recording"))
         elif prev == "processing":
             self._emit(Cancelled(stage="processing"))
@@ -100,39 +104,163 @@ class LocalWhisperEngine:
             self._cancelled = False
 
         self._processing_thread = threading.Thread(
-            target=self._process, args=(audio_data,), daemon=True,
+            target=self._process,
+            args=(audio_data,),
+            daemon=True,
         )
         self._processing_thread.start()
 
     def _start_recording(self):
         self._cancelled = False
+        streaming = self._config.get("streaming", False)
+
+        chunk_callback = None
+        if streaming:
+            self._transcriber.cancel_unload_timer()
+            self._chunk_accumulator = ChunkAccumulator(
+                chunk_duration=self._config.get("chunk_duration", 5.0),
+                sample_rate=self._config["sample_rate"],
+            )
+            self._streaming_transcriber = StreamingTranscriber(self._transcriber)
+            self._streaming_transcriber.start()
+
+            acc = self._chunk_accumulator
+            st = self._streaming_transcriber
+
+            def chunk_callback(frames):
+                chunk = acc.add_frames(frames)
+                if chunk is not None:
+                    st.submit_chunk(chunk)
+
         try:
-            self._recorder.start()
+            self._recorder.start(chunk_callback=chunk_callback)
         except Exception:
             log.exception("failed to start recording")
+            if self._streaming_transcriber:
+                self._streaming_transcriber.cancel()
+                self._streaming_transcriber = None
+                self._chunk_accumulator = None
             self._emit(RecordingFailed(reason="device_error"))
             return
         self._state = "recording"
         self._emit(RecordingStarted())
 
     def _stop_recording(self):
-        audio_data = self._recorder.stop()
-        if not audio_data:
+        audio = self._recorder.stop_array()
+
+        if self._streaming_transcriber:
+            st = self._streaming_transcriber
+            acc = self._chunk_accumulator
+            self._streaming_transcriber = None
+            self._chunk_accumulator = None
+
+            remainder = acc.flush() if acc else None
+            if remainder is not None:
+                st.submit_chunk(remainder)
+
+            duration = (
+                len(audio) / self._config["sample_rate"] if audio is not None else 0.0
+            )
+            self._state = "processing"
+            self._emit(RecordingDone(audio_data=b"", duration=duration))
+
+            self._processing_thread = threading.Thread(
+                target=self._process_streaming,
+                args=(st,),
+                daemon=True,
+            )
+            self._processing_thread.start()
+            return
+
+        if audio is None:
             self._state = "idle"
             self._emit(RecordingFailed(reason="no_audio"))
             return
 
-        with io.BytesIO(audio_data) as buf:
-            info = sf.info(buf)
-            duration = info.duration
+        duration = len(audio) / self._config["sample_rate"]
 
         self._state = "processing"
-        self._emit(RecordingDone(audio_data=audio_data, duration=duration))
+        self._emit(RecordingDone(audio_data=b"", duration=duration))
 
         self._processing_thread = threading.Thread(
-            target=self._process, args=(audio_data,), daemon=True,
+            target=self._process_array,
+            args=(audio,),
+            daemon=True,
         )
         self._processing_thread.start()
+
+    def _finish_with_text(self, raw_text):
+        self._emit(TranscriptionDone(raw_text=raw_text))
+
+        if not raw_text:
+            return
+
+        if not self._config.get("postprocess", True):
+            self._emit(
+                PostProcessingDone(
+                    raw_text=raw_text,
+                    processed_text=raw_text,
+                )
+            )
+            return
+
+        self._emit(PostProcessingStarted())
+        try:
+            processed_text = self._postprocessor.process(raw_text)
+            self._emit(
+                PostProcessingDone(
+                    raw_text=raw_text,
+                    processed_text=processed_text,
+                )
+            )
+        except Exception as exc:
+            self._emit(
+                PostProcessingFailed(
+                    raw_text=raw_text,
+                    error=str(exc),
+                )
+            )
+
+    def _process_streaming(self, streaming_transcriber):
+        try:
+            if self._cancelled:
+                streaming_transcriber.cancel()
+                return
+
+            self._emit(TranscriptionStarted())
+            raw_text = streaming_transcriber.finish()
+
+            if self._cancelled:
+                return
+
+            self._finish_with_text(raw_text)
+        finally:
+            with self._state_lock:
+                if self._state == "processing":
+                    self._state = "idle"
+                self._cancelled = False
+
+    def _process_array(self, audio):
+        try:
+            if self._cancelled:
+                return
+
+            self._emit(TranscriptionStarted())
+            try:
+                raw_text = self._transcriber.transcribe_array(audio)
+            except Exception as exc:
+                self._emit(TranscriptionFailed(error=str(exc)))
+                return
+
+            if self._cancelled:
+                return
+
+            self._finish_with_text(raw_text)
+        finally:
+            with self._state_lock:
+                if self._state == "processing":
+                    self._state = "idle"
+                self._cancelled = False
 
     def _process(self, audio_data: bytes):
         try:
@@ -149,21 +277,7 @@ class LocalWhisperEngine:
             if self._cancelled:
                 return
 
-            self._emit(TranscriptionDone(raw_text=raw_text))
-
-            if not raw_text:
-                return
-
-            self._emit(PostProcessingStarted())
-            try:
-                processed_text = self._postprocessor.process(raw_text)
-                self._emit(PostProcessingDone(
-                    raw_text=raw_text, processed_text=processed_text,
-                ))
-            except Exception as exc:
-                self._emit(PostProcessingFailed(
-                    raw_text=raw_text, error=str(exc),
-                ))
+            self._finish_with_text(raw_text)
         finally:
             with self._state_lock:
                 if self._state == "processing":
@@ -172,8 +286,13 @@ class LocalWhisperEngine:
 
     def update_config(self, updates: dict) -> None:
         self._config.update(updates)
+        if "input_device" in updates:
+            self._recorder.input_device = updates["input_device"]
         if "language" in updates:
             self._transcriber.language = updates["language"]
+        if "whisper_model" in updates:
+            self._transcriber.model_name = updates["whisper_model"]
+            self._transcriber._unload()
         if "model_idle_timeout" in updates:
             self._transcriber.idle_timeout = updates["model_idle_timeout"]
         if "translate_to" in updates:

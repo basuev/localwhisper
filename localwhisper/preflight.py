@@ -50,7 +50,4 @@ def run_checks(config: dict) -> bool:
     if not _check_imports():
         return False
 
-    if not _check_whisper_model(config["whisper_model"]):
-        return False
-
-    return True
+    return _check_whisper_model(config["whisper_model"])

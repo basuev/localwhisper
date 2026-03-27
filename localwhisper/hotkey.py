@@ -1,5 +1,5 @@
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 import Quartz
 
@@ -52,7 +52,8 @@ class HotkeyListener:
         if tap is None:
             raise RuntimeError(
                 "Failed to create event tap. "
-                "Grant Accessibility permission in System Settings > Privacy & Security."
+                "Grant Accessibility permission in "
+                "System Settings > Privacy & Security."
             )
 
         run_loop_source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
@@ -81,10 +82,9 @@ class HotkeyListener:
                         self.callback()
 
         elif event_type == Quartz.kCGEventKeyDown:
-            if keycode == ESCAPE_KEYCODE:
-                if self.cancel_callback():
-                    self._escape_swallowed = True
-                    return None
+            if keycode == ESCAPE_KEYCODE and self.cancel_callback():
+                self._escape_swallowed = True
+                return None
             if self._right_option_down:
                 self._other_key_pressed = True
 

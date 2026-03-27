@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 HISTORY_DIR = Path.home() / ".local" / "share" / "localwhisper"
@@ -15,7 +15,7 @@ def save_to_history(
     history_path.parent.mkdir(parents=True, exist_ok=True)
 
     entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "raw": raw_text,
         "processed": processed_text,
     }

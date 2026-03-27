@@ -1,6 +1,9 @@
 # LocalWhisper configuration
 
-# Whisper model: "mlx-community/whisper-large-v3-mlx" or "mlx-community/whisper-large-v3-turbo"
+# Whisper model (speed/quality tradeoff):
+#   mlx-community/whisper-large-v3-mlx       - best quality, ~2-4s per 5s chunk
+#   mlx-community/whisper-large-v3-turbo       - good quality, ~1-2s per 5s chunk
+#   mlx-community/whisper-small-mlx           - adequate quality, ~0.3s per 5s chunk
 whisper_model: "mlx-community/whisper-large-v3-mlx"
 
 # Language for Whisper
@@ -28,8 +31,17 @@ model_idle_timeout: 300
 # Input device: substring match by name or device index. None = system default.
 # input_device: "MacBook"
 
-# Microphone volume during recording (0-100), restored to previous value after
+# Microphone volume during recording (0-100), null = skip volume control for faster start
 recording_volume: 100
+
+# Post-processing: true = fix punctuation via LLM, false = raw whisper output (faster)
+postprocess: true
+
+# Streaming transcription: transcribe audio chunks during recording for near-instant results
+streaming: true
+
+# Chunk duration in seconds for streaming mode (5s works well for whisper)
+chunk_duration: 5.0
 
 # Sound feedback
 sound_start: "/System/Library/Sounds/Tink.aiff"

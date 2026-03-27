@@ -1,9 +1,7 @@
 import io
 import logging
-import tempfile
 import threading
 import time
-from pathlib import Path
 
 import numpy as np
 import soundfile as sf
@@ -42,9 +40,14 @@ class Transcriber:
     def _ensure_loaded(self):
         if not self._model_loaded:
             import mlx_whisper
+
             self._mlx_whisper = mlx_whisper
-            # Warm up by loading the model (first transcribe call downloads/loads it)
             self._model_loaded = True
+
+    def cancel_unload_timer(self):
+        if self._unload_timer:
+            self._unload_timer.cancel()
+            self._unload_timer = None
 
     def _schedule_unload(self):
         if self._unload_timer:
@@ -57,31 +60,25 @@ class Transcriber:
         from .preflight import is_model_cached
 
         if not is_model_cached(self.model_name):
-            log.warning("Whisper model not cached, skipping preload: %s", self.model_name)
+            log.warning(
+                "Whisper model not cached, skipping preload: %s",
+                self.model_name,
+            )
             return
 
         with self._lock:
             self._ensure_loaded()
 
-        buf = io.BytesIO()
         silence = np.zeros(16000, dtype=np.float32)
-        sf.write(buf, silence, 16000, format="WAV", subtype="FLOAT")
-
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            f.write(buf.getvalue())
-            tmp_path = f.name
-
         try:
             self._mlx_whisper.transcribe(
-                tmp_path,
+                silence,
                 path_or_hf_repo=self.model_name,
                 language=self.language,
             )
-            log.info("Whisper model preloaded: %s", self.model_name)
+            log.info("whisper model preloaded: %s", self.model_name)
         except Exception:
-            log.warning("Failed to preload Whisper model", exc_info=True)
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
+            log.warning("failed to preload whisper model", exc_info=True)
 
         self._last_used = time.time()
         self._schedule_unload()
@@ -89,34 +86,32 @@ class Transcriber:
     def _unload(self):
         with self._lock:
             if self._model_loaded:
-                # Clear references to free memory
                 self._mlx_whisper = None
                 self._model_loaded = False
                 import gc
+
                 gc.collect()
 
-    def transcribe(self, audio_data: bytes) -> str:
-        if not audio_data:
+    def transcribe_array(self, audio: np.ndarray) -> str:
+        if len(audio) == 0:
+            return ""
+
+        from .preflight import is_model_cached
+
+        if not is_model_cached(self.model_name):
+            log.warning("model not cached, skipping transcription: %s", self.model_name)
             return ""
 
         with self._lock:
             self._ensure_loaded()
             self._last_used = time.time()
 
-        # Write audio to temp file for mlx_whisper
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            f.write(audio_data)
-            tmp_path = f.name
-
-        try:
-            result = self._mlx_whisper.transcribe(
-                tmp_path,
-                path_or_hf_repo=self.model_name,
-                language=self.language,
-            )
-            text = result.get("text", "").strip()
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
+        result = self._mlx_whisper.transcribe(
+            audio,
+            path_or_hf_repo=self.model_name,
+            language=self.language,
+        )
+        text = result.get("text", "").strip()
 
         self._schedule_unload()
 
@@ -124,3 +119,11 @@ class Transcriber:
             return ""
 
         return text
+
+    def transcribe(self, audio_data: bytes) -> str:
+        if not audio_data:
+            return ""
+
+        buf = io.BytesIO(audio_data)
+        audio, _ = sf.read(buf, dtype="float32")
+        return self.transcribe_array(audio)

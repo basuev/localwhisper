@@ -10,7 +10,6 @@ class ClipboardManager:
 
         # Save current clipboard
         old_contents = self._get_clipboard()
-        old_change_count = pasteboard.changeCount()
 
         # Set new text
         pasteboard.clearContents()
@@ -20,7 +19,7 @@ class ClipboardManager:
         self._simulate_paste()
 
         # Wait for paste to complete, then restore
-        time.sleep(0.15)
+        time.sleep(0.05)
 
         # Restore previous clipboard if it was different
         if old_contents is not None:
@@ -33,7 +32,9 @@ class ClipboardManager:
 
     def _simulate_paste(self):
         # Create Cmd+V key down event
-        source = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateCombinedSessionState)
+        source = Quartz.CGEventSourceCreate(
+            Quartz.kCGEventSourceStateCombinedSessionState
+        )
 
         # Key code 9 = 'v'
         cmd_v_down = Quartz.CGEventCreateKeyboardEvent(source, 9, True)

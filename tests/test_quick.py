@@ -2,7 +2,6 @@
 
 import importlib
 
-
 MODULES = [
     "localwhisper.config",
     "localwhisper.history",
@@ -15,6 +14,7 @@ MODULES = [
     "localwhisper.preflight",
     "localwhisper.events",
     "localwhisper.engine",
+    "localwhisper.streaming",
     "localwhisper.app",
 ]
 
@@ -33,6 +33,9 @@ REQUIRED_CONFIG_KEYS = [
     "sound_start",
     "sound_stop",
     "sound_cancel",
+    "postprocess",
+    "streaming",
+    "chunk_duration",
 ]
 
 
