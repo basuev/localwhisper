@@ -128,24 +128,22 @@ class BlobView(AppKit.NSView):
                 phase = t * 1.6 + i * (2 * math.pi / 3)
                 dx = 0.6 * math.cos(phase)
                 dy = 0.6 * math.sin(phase)
-                gray = min(base_gray + 0.45, 1.0)
+                gray = min(base_gray + 0.35, 1.0)
                 gradient = Quartz.CGGradientCreateWithColorComponents(
                     colorspace,
-                    [gray, 0.6, gray, 0.0],
+                    [gray, 0.5, gray, 0.0],
                     [0.0, 1.0],
                     2,
                 )
                 sx = cx + radius * dx
                 sy = cy + radius * dy
-                inner_r = radius * 0.35
-                outer_r = radius * 1.1
                 Quartz.CGContextDrawRadialGradient(
                     ctx,
                     gradient,
                     Quartz.CGPointMake(sx, sy),
-                    inner_r,
+                    0,
                     Quartz.CGPointMake(sx, sy),
-                    outer_r,
+                    radius * 1.2,
                     Quartz.kCGGradientDrawsBeforeStartLocation,
                 )
         else:
