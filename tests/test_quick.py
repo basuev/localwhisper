@@ -15,7 +15,15 @@ MODULES = [
     "localwhisper.events",
     "localwhisper.engine",
     "localwhisper.streaming",
+    "localwhisper.constants",
     "localwhisper.app",
+    "localwhisper.settings",
+    "localwhisper.settings.controls",
+    "localwhisper.settings.window",
+    "localwhisper.settings.tabs.general",
+    "localwhisper.settings.tabs.models",
+    "localwhisper.settings.tabs.audio",
+    "localwhisper.settings.tabs.advanced",
 ]
 
 REQUIRED_CONFIG_KEYS = [
