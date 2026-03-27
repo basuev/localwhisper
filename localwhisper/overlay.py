@@ -179,6 +179,14 @@ class AudioOverlay:
 
     def set_mode(self, mode):
         self._mode = mode
+        if self._timer is not None:
+            self._timer.invalidate()
+            fps = 15.0 if mode == "processing" else 60.0
+            self._timer = AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
+                1.0 / fps,
+                True,
+                lambda _: self._tick(),
+            )
 
     def show(self):
         try:
