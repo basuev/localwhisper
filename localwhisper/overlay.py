@@ -126,12 +126,12 @@ class BlobView(AppKit.NSView):
         if self._shimmer:
             for i in range(3):
                 phase = t * 1.6 + i * (2 * math.pi / 3)
-                dx = 0.45 * math.cos(phase)
-                dy = 0.45 * math.sin(phase)
-                gray = base_gray + 0.25
+                dx = 0.6 * math.cos(phase)
+                dy = 0.6 * math.sin(phase)
+                gray = min(base_gray + 0.55, 1.0)
                 gradient = Quartz.CGGradientCreateWithColorComponents(
                     colorspace,
-                    [gray, 0.50, gray, 0.0],
+                    [gray, 0.9, gray, 0.0],
                     [0.0, 1.0],
                     2,
                 )
@@ -143,7 +143,7 @@ class BlobView(AppKit.NSView):
                     Quartz.CGPointMake(sx, sy),
                     0,
                     Quartz.CGPointMake(sx, sy),
-                    radius * 0.7,
+                    radius * 0.9,
                     Quartz.kCGGradientDrawsBeforeStartLocation,
                 )
         else:
