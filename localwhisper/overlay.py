@@ -231,6 +231,7 @@ class AudioOverlay:
             self._timer.invalidate()
             self._timer = None
         if self._panel is not None:
+            self._panel.setAlphaValue_(1.0)
             self._panel.orderOut_(None)
 
     def update_amplitude(self, value):
@@ -242,10 +243,15 @@ class AudioOverlay:
             t = time.monotonic() - self._start_time
             if self._mode == "processing":
                 amp = 0.15 + 0.10 * math.sin(t * 1.8)
+                alpha = 0.45 + 0.55 * (0.5 + 0.5 * math.sin(t * 2.5))
                 t = t * 0.5
+                if self._panel is not None:
+                    self._panel.setAlphaValue_(alpha)
             else:
                 with self._lock:
                     amp = self._amplitude
+                if self._panel is not None:
+                    self._panel.setAlphaValue_(1.0)
             self._blob_view.setAmplitude_(amp)
             self._blob_view.setTime_(t)
             self._blob_view.setNeedsDisplay_(True)
