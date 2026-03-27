@@ -2,6 +2,8 @@
 
 import importlib
 
+from localwhisper.constants import OLLAMA_MODELS
+
 MODULES = [
     "localwhisper.config",
     "localwhisper.history",
@@ -66,3 +68,13 @@ def test_entry_point_resolves():
     mod = importlib.import_module("localwhisper.app")
     assert hasattr(mod, "main"), "localwhisper.app must have main()"
     assert callable(mod.main)
+
+
+def test_ollama_models_constant_exists():
+    assert len(OLLAMA_MODELS) >= 1
+    ids = [model_id for model_id, _ in OLLAMA_MODELS]
+    assert "gemma3:4b" in ids
+
+
+def test_default_ollama_model_is_gemma(default_config):
+    assert default_config["ollama_model"] == "gemma3:4b"

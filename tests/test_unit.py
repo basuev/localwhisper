@@ -288,6 +288,71 @@ def test_postprocessor_switch(default_config):
     assert pp.ollama_model == "llama3:8b"
 
 
+def test_recommended_ollama_models_survive_refresh():
+    """refresh_ollama_models must keep recommended models even if not installed."""
+    from localwhisper.constants import OLLAMA_MODELS
+    from localwhisper.settings.tabs.models import merge_ollama_models
+
+    recommended_ids = [model_id for model_id, _ in OLLAMA_MODELS]
+    fetched = ["llama3:8b", "mistral:7b"]
+
+    merged = merge_ollama_models(fetched)
+    for rid in recommended_ids:
+        assert rid in merged, f"{rid} must be in merged list"
+    for f in fetched:
+        assert f in merged
+
+
+def test_ollama_request_has_no_thinking_params(default_config, monkeypatch):
+    """gemma3 does not need think/no_think - request must be clean."""
+    from unittest.mock import Mock
+
+    from localwhisper.postprocessor import PostProcessor
+
+    pp = PostProcessor(default_config)
+
+    captured = {}
+
+    def mock_post(url, json=None, **kwargs):
+        captured["json"] = json
+        resp = Mock()
+        resp.status_code = 200
+        resp.raise_for_status = Mock()
+        resp.json.return_value = {"message": {"content": "test"}}
+        return resp
+
+    monkeypatch.setattr("localwhisper.postprocessor.requests.post", mock_post)
+    pp.process("hello")
+
+    assert "think" not in captured["json"]
+    system_msg = captured["json"]["messages"][0]["content"]
+    assert "/no_think" not in system_msg
+
+
+def test_ollama_timeout_is_30s(default_config, monkeypatch):
+    """ollama timeout is 30s (no thinking overhead)."""
+    from unittest.mock import Mock
+
+    from localwhisper.postprocessor import PostProcessor
+
+    pp = PostProcessor(default_config)
+
+    captured = {}
+
+    def mock_post(url, json=None, **kwargs):
+        captured["timeout"] = kwargs.get("timeout")
+        resp = Mock()
+        resp.status_code = 200
+        resp.raise_for_status = Mock()
+        resp.json.return_value = {"message": {"content": "test"}}
+        return resp
+
+    monkeypatch.setattr("localwhisper.postprocessor.requests.post", mock_post)
+    pp.process("hello")
+
+    assert captured["timeout"] == 30
+
+
 def test_fetch_ollama_models_success(monkeypatch):
     """fetch_ollama_models parses /api/tags response."""
     from unittest.mock import Mock
@@ -298,7 +363,7 @@ def test_fetch_ollama_models_success(monkeypatch):
     mock_resp.status_code = 200
     mock_resp.raise_for_status = Mock()
     mock_resp.json.return_value = {
-        "models": [{"name": "qwen2.5:7b"}, {"name": "llama3:8b"}]
+        "models": [{"name": "gemma3:4b"}, {"name": "llama3:8b"}]
     }
 
     import localwhisper.models as models_mod
@@ -306,7 +371,7 @@ def test_fetch_ollama_models_success(monkeypatch):
     monkeypatch.setattr(models_mod.requests, "get", lambda *a, **kw: mock_resp)
 
     result = fetch_ollama_models("http://localhost:11434")
-    assert result == ["qwen2.5:7b", "llama3:8b"]
+    assert result == ["gemma3:4b", "llama3:8b"]
 
 
 def test_fetch_ollama_models_failure(monkeypatch):
@@ -421,7 +486,8 @@ def test_postprocessor_set_translate_to(default_config):
 
     pp.set_translate_to(None)
     assert pp.translate_to is None
-    assert pp._build_prompt() == default_config["postprocess_prompt"]
+    prompt = pp._build_prompt()
+    assert prompt == default_config["postprocess_prompt"]
 
 
 def test_save_config_roundtrip(tmp_path):
@@ -443,14 +509,14 @@ def test_save_config_preserves_existing_keys(tmp_path):
     from localwhisper.config import save_config
 
     config_file = tmp_path / "config.yaml"
-    config_file.write_text(yaml.dump({"language": "ru", "ollama_model": "qwen2.5:7b"}))
+    config_file.write_text(yaml.dump({"language": "ru", "ollama_model": "gemma3:4b"}))
 
     save_config({"language": "en"}, config_path=config_file)
 
     with open(config_file) as f:
         saved = yaml.safe_load(f)
     assert saved["language"] == "en"
-    assert saved["ollama_model"] == "qwen2.5:7b"
+    assert saved["ollama_model"] == "gemma3:4b"
 
 
 def test_transcriber_language_mutable(default_config):
