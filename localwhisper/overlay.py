@@ -68,7 +68,11 @@ class BlobView(AppKit.NSView):
         self._amplitude = 0.0
         self._t = 0.0
         self._theme = _THEMES["dark"]
+        self._shimmer = False
         return self
+
+    def setShimmer_(self, enabled):
+        self._shimmer = enabled
 
     def setTheme_(self, name):
         self._theme = _THEMES.get(name, _THEMES["dark"])
@@ -118,24 +122,49 @@ class BlobView(AppKit.NSView):
 
         ctx = AppKit.NSGraphicsContext.currentContext().CGContext()
         colorspace = Quartz.CGColorSpaceCreateDeviceGray()
-        for gray, alpha, dx, dy, spread in spots:
-            gradient = Quartz.CGGradientCreateWithColorComponents(
-                colorspace,
-                [gray, alpha, gray, 0.0],
-                [0.0, 1.0],
-                2,
-            )
-            sx = cx + radius * dx
-            sy = cy + radius * dy
-            Quartz.CGContextDrawRadialGradient(
-                ctx,
-                gradient,
-                Quartz.CGPointMake(sx, sy),
-                0,
-                Quartz.CGPointMake(sx, sy),
-                radius * spread,
-                Quartz.kCGGradientDrawsBeforeStartLocation,
-            )
+
+        if self._shimmer:
+            for i in range(3):
+                phase = t * 1.6 + i * (2 * math.pi / 3)
+                dx = 0.45 * math.cos(phase)
+                dy = 0.45 * math.sin(phase)
+                gray = base_gray + 0.25
+                gradient = Quartz.CGGradientCreateWithColorComponents(
+                    colorspace,
+                    [gray, 0.50, gray, 0.0],
+                    [0.0, 1.0],
+                    2,
+                )
+                sx = cx + radius * dx
+                sy = cy + radius * dy
+                Quartz.CGContextDrawRadialGradient(
+                    ctx,
+                    gradient,
+                    Quartz.CGPointMake(sx, sy),
+                    0,
+                    Quartz.CGPointMake(sx, sy),
+                    radius * 0.7,
+                    Quartz.kCGGradientDrawsBeforeStartLocation,
+                )
+        else:
+            for gray, alpha, dx, dy, spread in spots:
+                gradient = Quartz.CGGradientCreateWithColorComponents(
+                    colorspace,
+                    [gray, alpha, gray, 0.0],
+                    [0.0, 1.0],
+                    2,
+                )
+                sx = cx + radius * dx
+                sy = cy + radius * dy
+                Quartz.CGContextDrawRadialGradient(
+                    ctx,
+                    gradient,
+                    Quartz.CGPointMake(sx, sy),
+                    0,
+                    Quartz.CGPointMake(sx, sy),
+                    radius * spread,
+                    Quartz.kCGGradientDrawsBeforeStartLocation,
+                )
 
         AppKit.NSGraphicsContext.restoreGraphicsState()
 
@@ -179,9 +208,11 @@ class AudioOverlay:
 
     def set_mode(self, mode):
         self._mode = mode
+        if self._blob_view is not None:
+            self._blob_view.setShimmer_(mode == "processing")
         if self._timer is not None:
             self._timer.invalidate()
-            fps = 15.0 if mode == "processing" else 60.0
+            fps = 30.0 if mode == "processing" else 60.0
             self._timer = AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
                 1.0 / fps,
                 True,
@@ -212,6 +243,7 @@ class AudioOverlay:
             with self._lock:
                 self._amplitude = 0.0
             self._mode = "recording"
+            self._blob_view.setShimmer_(False)
             self._blob_view.setAmplitude_(0.0)
             self._start_time = time.monotonic()
             self._panel.orderFrontRegardless()
@@ -231,7 +263,6 @@ class AudioOverlay:
             self._timer.invalidate()
             self._timer = None
         if self._panel is not None:
-            self._panel.setAlphaValue_(1.0)
             self._panel.orderOut_(None)
 
     def update_amplitude(self, value):
@@ -243,15 +274,9 @@ class AudioOverlay:
             t = time.monotonic() - self._start_time
             if self._mode == "processing":
                 amp = 0.15 + 0.10 * math.sin(t * 1.8)
-                alpha = 0.45 + 0.55 * (0.5 + 0.5 * math.sin(t * 2.5))
-                t = t * 0.5
-                if self._panel is not None:
-                    self._panel.setAlphaValue_(alpha)
             else:
                 with self._lock:
                     amp = self._amplitude
-                if self._panel is not None:
-                    self._panel.setAlphaValue_(1.0)
             self._blob_view.setAmplitude_(amp)
             self._blob_view.setTime_(t)
             self._blob_view.setNeedsDisplay_(True)
