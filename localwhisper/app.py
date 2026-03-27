@@ -9,6 +9,12 @@ from PyObjCTools.AppHelper import callAfter
 from . import focus, oauth
 from .clipboard import ClipboardManager
 from .config import load_config, save_config
+from .constants import SPEECH_LANGUAGES, TRANSLATE_LANGUAGES, WHISPER_MODELS
+from .settings.window import SettingsWindow
+from .settings.tabs.general import GeneralTab
+from .settings.tabs.models import ModelsTab
+from .settings.tabs.audio import AudioTab
+from .settings.tabs.advanced import AdvancedTab
 from .engine import LocalWhisperEngine
 from .events import (
     Cancelled,
@@ -27,31 +33,6 @@ from .recorder import list_input_devices
 from .sounds import play_sound
 
 log = logging.getLogger(__name__)
-
-SPEECH_LANGUAGES = [
-    ("ru", "Russian"),
-    ("en", "English"),
-    ("de", "German"),
-    ("fr", "French"),
-    ("es", "Spanish"),
-    ("ja", "Japanese"),
-    ("zh", "Chinese"),
-    ("ko", "Korean"),
-    ("uk", "Ukrainian"),
-    ("pl", "Polish"),
-]
-
-TRANSLATE_LANGUAGES = [
-    "Off",
-    "Russian",
-    "English",
-    "German",
-    "French",
-    "Spanish",
-    "Japanese",
-    "Chinese",
-    "Korean",
-]
 
 
 def _make_icon(symbol_name: str, with_dot: bool = False) -> AppKit.NSImage:
@@ -101,6 +82,11 @@ class LocalWhisperApp(rumps.App):
         self.config = load_config()
         self._recording_source_app = None
         self.clipboard = ClipboardManager()
+        self._settings_window = None
+        self._general_tab = None
+        self._models_tab = None
+        self._audio_tab = None
+        self._advanced_tab = None
 
         self._icon_idle = _make_icon("mic")
         self._icon_recording = _make_icon("mic.fill", with_dot=True)
@@ -183,19 +169,21 @@ class LocalWhisperApp(rumps.App):
         )
         self._theme_item.state = 1 if current_theme == "light" else 0
 
+        self._preferences_item = rumps.MenuItem(
+            "Preferences...", callback=self._on_preferences, key=","
+        )
+
         quit_item = rumps.MenuItem(
             "Quit", callback=lambda _: rumps.quit_application(), key="q"
         )
         self.menu = [
-            self._model_menu,
             self._speech_lang_menu,
             self._translate_menu,
-            self._device_menu,
             None,
-            self._whisper_menu,
             self._postprocess_item,
             self._streaming_item,
-            self._theme_item,
+            None,
+            self._preferences_item,
             None,
             quit_item,
         ]
@@ -316,11 +304,14 @@ class LocalWhisperApp(rumps.App):
         for key in self._speech_lang_menu:
             if isinstance(self._speech_lang_menu[key], rumps.MenuItem):
                 self._speech_lang_menu[key].state = 0
+        self.config["language"] = code
         self.engine.update_config({"language": code})
         if name in self._speech_lang_menu:
             self._speech_lang_menu[name].state = 1
         self._speech_lang_menu.title = f"Speech: {name}"
         save_config({"language": code})
+        if self._general_tab:
+            self._general_tab.sync(self.config)
 
     def _make_translate_callback(self, language: str):
         def callback(_):
@@ -333,17 +324,21 @@ class LocalWhisperApp(rumps.App):
             if isinstance(self._translate_menu[key], rumps.MenuItem):
                 self._translate_menu[key].state = 0
         if language == "Off":
+            self.config["translate_to"] = None
             self.engine.update_config({"translate_to": None})
             self._translate_menu.title = "Translate: Off"
             if "Off" in self._translate_menu:
                 self._translate_menu["Off"].state = 1
             save_config({"translate_to": None})
         else:
+            self.config["translate_to"] = language
             self.engine.update_config({"translate_to": language})
             self._translate_menu.title = f"Translate: {language}"
             if language in self._translate_menu:
                 self._translate_menu[language].state = 1
             save_config({"translate_to": language})
+        if self._general_tab:
+            self._general_tab.sync(self.config)
 
     def _populate_devices(self):
         import contextlib
@@ -407,13 +402,8 @@ class LocalWhisperApp(rumps.App):
         save_config({"input_device": device_name})
 
     def _populate_whisper_models(self):
-        models = [
-            ("mlx-community/whisper-large-v3-mlx", "large-v3 (best quality)"),
-            ("mlx-community/whisper-large-v3-turbo", "large-v3-turbo (fast)"),
-            ("mlx-community/whisper-small-mlx", "small (fastest)"),
-        ]
         current = self.config.get("whisper_model", "")
-        for model_id, label in models:
+        for model_id, label in WHISPER_MODELS:
             item = rumps.MenuItem(label, callback=self._make_whisper_callback(model_id))
             if model_id == current:
                 item.state = 1
@@ -474,6 +464,8 @@ class LocalWhisperApp(rumps.App):
         save_config({"postprocess": new_state})
         sender.state = 1 if new_state else 0
         log.info("post-processing: %s", "on" if new_state else "off")
+        if self._advanced_tab:
+            self._advanced_tab.sync(self.config)
 
     def _toggle_streaming(self, sender):
         new_state = not self.config.get("streaming", True)
@@ -482,6 +474,8 @@ class LocalWhisperApp(rumps.App):
         save_config({"streaming": new_state})
         sender.state = 1 if new_state else 0
         log.info("streaming: %s", "on" if new_state else "off")
+        if self._advanced_tab:
+            self._advanced_tab.sync(self.config)
 
     def _toggle_theme(self, sender):
         current = self.config.get("blob_theme", "dark")
@@ -492,19 +486,182 @@ class LocalWhisperApp(rumps.App):
         sender.state = 1 if new_theme == "light" else 0
         log.info("blob theme: %s", new_theme)
 
-    def _on_openai_login(self, _):
+    def _on_preferences(self, _):
+        if self._settings_window is None:
+            self._settings_window = SettingsWindow.shared(
+                self.config, self._on_setting_changed
+            )
+            self._general_tab = GeneralTab(self.config, self._on_setting_changed)
+            self._models_tab = ModelsTab(
+                self.config,
+                self._on_setting_changed,
+                on_openai_login=self._do_openai_login,
+            )
+            self._audio_tab = AudioTab(self.config, self._on_setting_changed)
+            self._advanced_tab = AdvancedTab(self.config, self._on_setting_changed)
+
+            self._settings_window.set_tab_view(0, self._general_tab.view)
+            self._settings_window.set_tab_view(1, self._models_tab.view)
+            self._settings_window.set_tab_view(2, self._audio_tab.view)
+            self._settings_window.set_tab_view(3, self._advanced_tab.view)
+        else:
+            self._general_tab.sync(self.config)
+            self._models_tab.sync(self.config)
+            self._audio_tab.sync(self.config)
+            self._advanced_tab.sync(self.config)
+
+        self._populate_settings_dynamic_data()
+        self._settings_window.show()
+
+    def _populate_settings_dynamic_data(self):
+        def fetch():
+            ollama_models = fetch_ollama_models(self.config["ollama_url"])
+            codex_models = load_codex_models()
+
+            try:
+                devices = list_input_devices()
+                device_names = [d["name"] for d in devices]
+            except Exception:
+                device_names = []
+
+            token = oauth.load_token()
+
+            def update_ui():
+                if self._models_tab and ollama_models:
+                    self._models_tab.refresh_ollama_models(ollama_models)
+                if self._models_tab and codex_models:
+                    self._models_tab.refresh_openai_models(codex_models)
+                if self._audio_tab:
+                    self._audio_tab.refresh_devices(device_names)
+                if self._models_tab:
+                    self._models_tab.update_login_status(token is not None)
+
+            callAfter(update_ui)
+
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def _on_setting_changed(self, key, value):
+        if key == "_refresh_devices":
+
+            def refresh():
+                try:
+                    devices = list_input_devices()
+                    device_names = [d["name"] for d in devices]
+                except Exception:
+                    device_names = []
+
+                def update_ui():
+                    if self._audio_tab:
+                        self._audio_tab.refresh_devices(device_names)
+
+                callAfter(update_ui)
+
+            threading.Thread(target=refresh, daemon=True).start()
+            return
+
+        self.config[key] = value
+        self.engine.update_config({key: value})
+        save_config({key: value})
+
+        if key == "language":
+            name = next(
+                (n for c, n in SPEECH_LANGUAGES if c == value),
+                value,
+            )
+            self._speech_lang_menu.title = f"Speech: {name}"
+            for k in self._speech_lang_menu:
+                if isinstance(self._speech_lang_menu[k], rumps.MenuItem):
+                    self._speech_lang_menu[k].state = 0
+            if name in self._speech_lang_menu:
+                self._speech_lang_menu[name].state = 1
+
+        elif key == "translate_to":
+            label = value if value else "Off"
+            self._translate_menu.title = f"Translate: {label}"
+            for k in self._translate_menu:
+                if isinstance(self._translate_menu[k], rumps.MenuItem):
+                    self._translate_menu[k].state = 0
+            if label in self._translate_menu:
+                self._translate_menu[label].state = 1
+
+        elif key == "postprocess":
+            self._postprocess_item.state = 1 if value else 0
+
+        elif key == "streaming":
+            self._streaming_item.state = 1 if value else 0
+
+        elif key == "blob_theme":
+            self._overlay.set_theme(value)
+            self._theme_item.state = 1 if value == "light" else 0
+
+        elif key == "input_device":
+            label = value if value else "system default"
+            self._device_menu.title = f"Input: {label}"
+            for k in self._device_menu:
+                item = self._device_menu[k]
+                if isinstance(item, rumps.MenuItem):
+                    item.state = 0
+            if label in self._device_menu:
+                self._device_menu[label].state = 1
+
+        elif key == "whisper_model":
+            for k in self._whisper_menu:
+                item = self._whisper_menu[k]
+                if isinstance(item, rumps.MenuItem):
+                    item.state = 0
+            for k in self._whisper_menu:
+                item = self._whisper_menu[k]
+                if isinstance(item, rumps.MenuItem) and value in k:
+                    item.state = 1
+                    break
+
+            from .preflight import is_model_cached
+
+            if not is_model_cached(value):
+                log.info("model not cached, starting download: %s", value)
+                threading.Thread(
+                    target=self._download_whisper_model,
+                    args=(value,),
+                    daemon=True,
+                ).start()
+
+        elif key == "postprocessor":
+            self._current_backend = value
+            self._model_menu.title = self._model_menu_title()
+
+        elif key == "ollama_model":
+            self._current_model = value
+            self._model_menu.title = self._model_menu_title()
+
+        elif key == "openai_model":
+            if self._current_backend == "openai":
+                self._current_model = value
+                self._model_menu.title = self._model_menu_title()
+
+        log.info("setting changed: %s = %s", key, value)
+
+    def _do_openai_login(self):
+        def do_login():
+            success = oauth.login()
+
+            def on_done():
+                self._openai_login_item.title = (
+                    "Logged in" if success else "Login failed"
+                )
+                self._openai_login_item.set_callback(self._on_openai_login)
+                if self._models_tab:
+                    self._models_tab.update_login_status(success)
+
+            callAfter(on_done)
+            if success:
+                threading.Thread(target=self._refresh_models, daemon=True).start()
+
         self._openai_login_item.title = "Logging in..."
         self._openai_login_item.set_callback(None)
-
-        def do_login():
-            if oauth.login():
-                self._openai_login_item.title = "Logged in"
-                threading.Thread(target=self._refresh_models, daemon=True).start()
-            else:
-                self._openai_login_item.title = "Login failed"
-            self._openai_login_item.set_callback(self._on_openai_login)
-
         threading.Thread(target=do_login, daemon=True).start()
+
+    def _on_openai_login(self, _):
+        self._do_openai_login()
 
     def _on_hotkey(self):
         callAfter(lambda: self.engine.toggle())
