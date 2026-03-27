@@ -23,34 +23,14 @@ run_step() {
     fi
 }
 
-# Layer 0: Import check
-run_step "Import all modules" uv run python -c "
-import localwhisper.config
-import localwhisper.history
-import localwhisper.postprocessor
-import localwhisper.transcriber
-import localwhisper.recorder
-import localwhisper.clipboard
-import localwhisper.hotkey
-import localwhisper.sounds
-import localwhisper.app
-print('All imports OK')
-"
+run_step "Ruff" uv run ruff check .
 
-# Layer 0: Quick tests
-run_step "Quick checks" uv run python -m pytest tests/test_quick.py -x -q --timeout=10 --tb=short
+run_step "Unit tests" uv run python -m pytest tests/ --ignore=tests/test_integration.py -x -q --timeout=30 --tb=short
 
-# Layer 1: Unit tests
-run_step "Unit tests" uv run python -m pytest tests/test_unit.py -x -q --timeout=30 --tb=short
-
-# Layer 2: Integration tests
 if [[ "${1:-}" == "--full" ]]; then
-    run_step "Integration tests (full)" uv run python -m pytest tests/test_integration.py -x -q --timeout=180 --run-slow --tb=short
-else
-    run_step "Integration tests (quick)" uv run python -m pytest tests/test_integration.py -x -q -m "integration and not slow" --timeout=60 --tb=short
+    run_step "Integration tests" uv run python -m pytest tests/test_integration.py -x -q --timeout=180 --run-slow --tb=short
 fi
 
-# Summary
 echo "================================"
 if [ $FAILED -eq 0 ]; then
     printf "${GREEN}All checks passed${NC}\n"
