@@ -1593,3 +1593,27 @@ def test_recorder_volume_set_async_on_start(monkeypatch):
     time.sleep(0.2)
     assert rec._saved_volume == 50
     assert 100 in volume_calls
+
+
+def test_overlay_default_mode_is_recording():
+    from localwhisper.overlay import AudioOverlay
+
+    overlay = AudioOverlay()
+    assert overlay._mode == "recording"
+
+
+def test_overlay_set_mode_processing():
+    from localwhisper.overlay import AudioOverlay
+
+    overlay = AudioOverlay()
+    overlay.set_mode("processing")
+    assert overlay._mode == "processing"
+
+
+def test_overlay_set_mode_recording():
+    from localwhisper.overlay import AudioOverlay
+
+    overlay = AudioOverlay()
+    overlay.set_mode("processing")
+    overlay.set_mode("recording")
+    assert overlay._mode == "recording"
