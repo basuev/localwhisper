@@ -2,6 +2,10 @@ import logging
 import threading
 from collections import defaultdict
 
+import numpy as np
+
+RMS_FULL_SCALE = 0.1
+
 from .events import (
     Cancelled,
     PostProcessingDone,
@@ -33,6 +37,7 @@ class LocalWhisperEngine:
         self._processing_thread = None
         self._streaming_transcriber = None
         self._chunk_accumulator = None
+        self._amplitude_callback = None
 
         self._recorder = AudioRecorder(
             sample_rate=config["sample_rate"],
@@ -50,6 +55,9 @@ class LocalWhisperEngine:
 
     def on(self, event_type: type, callback) -> None:
         self._listeners[event_type].append(callback)
+
+    def set_amplitude_callback(self, callback) -> None:
+        self._amplitude_callback = callback
 
     def off(self, event_type: type, callback) -> None:
         import contextlib
@@ -131,6 +139,18 @@ class LocalWhisperEngine:
                 chunk = acc.add_frames(frames)
                 if chunk is not None:
                     st.submit_chunk(chunk)
+
+        amplitude_cb = self._amplitude_callback
+        inner_cb = chunk_callback
+
+        if inner_cb or amplitude_cb:
+
+            def chunk_callback(frames):
+                if inner_cb:
+                    inner_cb(frames)
+                if amplitude_cb:
+                    rms = float(np.sqrt(np.mean(frames**2)))
+                    amplitude_cb(min(rms / RMS_FULL_SCALE, 1.0))
 
         try:
             self._recorder.start(chunk_callback=chunk_callback)

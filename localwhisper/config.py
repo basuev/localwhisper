@@ -56,6 +56,7 @@ DEFAULT_CONFIG = {
     "postprocess": True,
     "streaming": True,
     "chunk_duration": 5.0,
+    "blob_theme": "dark",
 }
 
 CONFIG_DIR = Path.home() / ".config" / "localwhisper"

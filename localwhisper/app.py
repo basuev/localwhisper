@@ -21,6 +21,7 @@ from .events import (
 )
 from .history import save_to_history
 from .hotkey import HotkeyListener
+from .overlay import AudioOverlay
 from .models import fetch_ollama_models, load_codex_models
 from .recorder import list_input_devices
 from .sounds import play_sound
@@ -175,6 +176,13 @@ class LocalWhisperApp(rumps.App):
         )
         self._streaming_item.state = 1 if streaming_state else 0
 
+        current_theme = self.config.get("blob_theme", "dark")
+        self._theme_item = rumps.MenuItem(
+            "Light blob",
+            callback=self._toggle_theme,
+        )
+        self._theme_item.state = 1 if current_theme == "light" else 0
+
         quit_item = rumps.MenuItem(
             "Quit", callback=lambda _: rumps.quit_application(), key="q"
         )
@@ -187,6 +195,7 @@ class LocalWhisperApp(rumps.App):
             self._whisper_menu,
             self._postprocess_item,
             self._streaming_item,
+            self._theme_item,
             None,
             quit_item,
         ]
@@ -195,6 +204,8 @@ class LocalWhisperApp(rumps.App):
         threading.Thread(target=self._refresh_models, daemon=True).start()
 
         self.engine = LocalWhisperEngine(self.config)
+        self._overlay = AudioOverlay(theme=self.config.get("blob_theme", "dark"))
+        self.engine.set_amplitude_callback(self._overlay.update_amplitude)
 
         self.engine.on(RecordingStarted, self._on_recording_started)
         self.engine.on(RecordingFailed, self._on_recording_failed)
@@ -472,6 +483,15 @@ class LocalWhisperApp(rumps.App):
         sender.state = 1 if new_state else 0
         log.info("streaming: %s", "on" if new_state else "off")
 
+    def _toggle_theme(self, sender):
+        current = self.config.get("blob_theme", "dark")
+        new_theme = "light" if current == "dark" else "dark"
+        self.config["blob_theme"] = new_theme
+        save_config({"blob_theme": new_theme})
+        self._overlay.set_theme(new_theme)
+        sender.state = 1 if new_theme == "light" else 0
+        log.info("blob theme: %s", new_theme)
+
     def _on_openai_login(self, _):
         self._openai_login_item.title = "Logging in..."
         self._openai_login_item.set_callback(None)
@@ -501,12 +521,14 @@ class LocalWhisperApp(rumps.App):
     def _handle_recording_started(self):
         self._recording_source_app = focus.capture()
         self._set_icon(self._icon_recording)
+        self._overlay.show()
         play_sound(self.config["sound_start"])
 
     def _on_recording_failed(self, event):
         callAfter(self._handle_recording_failed)
 
     def _handle_recording_failed(self):
+        self._overlay.hide()
         self._set_icon(self._icon_idle)
         play_sound(self.config["sound_error"])
 
@@ -514,6 +536,7 @@ class LocalWhisperApp(rumps.App):
         callAfter(self._handle_recording_done)
 
     def _handle_recording_done(self):
+        self._overlay.hide()
         self._set_icon(self._icon_processing)
         play_sound(self.config["sound_stop"])
 
@@ -532,6 +555,7 @@ class LocalWhisperApp(rumps.App):
         callAfter(self._handle_cancelled)
 
     def _handle_cancelled(self):
+        self._overlay.hide()
         self._set_icon(self._icon_idle)
         play_sound(self.config["sound_cancel"])
 
