@@ -43,7 +43,7 @@ class PostProcessor:
         else:
             self.ollama_model = model
 
-    def process(self, text: str) -> str:
+    def process(self, text: str, cancel_check=None) -> str:
         if not text:
             return text
 

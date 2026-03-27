@@ -226,7 +226,10 @@ class LocalWhisperEngine:
 
         self._emit(PostProcessingStarted())
         try:
-            processed_text = self._postprocessor.process(raw_text)
+            cancel_check = lambda: self._cancelled
+            processed_text = self._postprocessor.process(
+                raw_text, cancel_check=cancel_check
+            )
             self._emit(
                 PostProcessingDone(
                     raw_text=raw_text,
