@@ -170,11 +170,15 @@ class AudioOverlay:
         self._lock = threading.Lock()
         self._start_time = 0.0
         self._theme = theme
+        self._mode = "recording"
 
     def set_theme(self, name):
         self._theme = name
         if self._blob_view is not None:
             self._blob_view.setTheme_(name)
+
+    def set_mode(self, mode):
+        self._mode = mode
 
     def show(self):
         try:
@@ -199,6 +203,7 @@ class AudioOverlay:
 
             with self._lock:
                 self._amplitude = 0.0
+            self._mode = "recording"
             self._blob_view.setAmplitude_(0.0)
             self._start_time = time.monotonic()
             self._panel.orderFrontRegardless()
@@ -226,9 +231,13 @@ class AudioOverlay:
 
     def _tick(self):
         try:
-            with self._lock:
-                amp = self._amplitude
             t = time.monotonic() - self._start_time
+            if self._mode == "processing":
+                amp = 0.15 + 0.10 * math.sin(t * 1.8)
+                t = t * 0.5
+            else:
+                with self._lock:
+                    amp = self._amplitude
             self._blob_view.setAmplitude_(amp)
             self._blob_view.setTime_(t)
             self._blob_view.setNeedsDisplay_(True)

@@ -713,13 +713,17 @@ class LocalWhisperApp(rumps.App):
         callAfter(self._handle_recording_done)
 
     def _handle_recording_done(self):
-        self._overlay.hide()
+        self._overlay.set_mode("processing")
         self._set_icon(self._icon_processing)
         play_sound(self.config["sound_stop"])
 
     def _on_transcription_failed(self, event):
         log.error("transcription failed: %s", event.error)
-        callAfter(self._set_icon, self._icon_idle)
+        callAfter(self._handle_transcription_failed)
+
+    def _handle_transcription_failed(self):
+        self._overlay.hide()
+        self._set_icon(self._icon_idle)
         play_sound(self.config["sound_error"])
 
     def _on_post_processing_done(self, event):
@@ -737,6 +741,7 @@ class LocalWhisperApp(rumps.App):
         play_sound(self.config["sound_cancel"])
 
     def _finish(self, raw_text, processed_text):
+        self._overlay.hide()
         focus.restore(self._recording_source_app)
         self.clipboard.paste(processed_text)
         save_to_history(raw_text, processed_text)
