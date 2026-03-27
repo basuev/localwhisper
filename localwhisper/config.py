@@ -6,7 +6,7 @@ import yaml
 DEFAULT_CONFIG = {
     "whisper_model": "mlx-community/whisper-large-v3-mlx",
     "language": "ru",
-    "ollama_model": "qwen2.5:7b",
+    "ollama_model": "gemma3:4b",
     "ollama_url": "http://localhost:11434",
     "postprocess_prompt": (
         "You are a minimal post-processor for Russian speech-to-text. "

@@ -4,7 +4,7 @@ from typing import Any
 import AppKit
 import objc
 
-from localwhisper.constants import WHISPER_MODELS
+from localwhisper.constants import OLLAMA_MODELS, WHISPER_MODELS
 from localwhisper.settings.controls import (
     LABEL_WIDTH,
     LabeledDropdown,
@@ -24,9 +24,17 @@ from localwhisper.settings.window import (
 WHISPER_DISPLAY_TO_ID = {label: model_id for model_id, label in WHISPER_MODELS}
 WHISPER_ID_TO_DISPLAY = {model_id: label for model_id, label in WHISPER_MODELS}
 
+RECOMMENDED_OLLAMA_IDS = [model_id for model_id, _ in OLLAMA_MODELS]
+
 POSTPROCESSOR_BACKENDS = ["Ollama", "OpenAI"]
 BACKEND_DISPLAY_TO_KEY = {"Ollama": "ollama", "OpenAI": "openai"}
 BACKEND_KEY_TO_DISPLAY = {"ollama": "Ollama", "openai": "OpenAI"}
+
+
+def merge_ollama_models(fetched: list[str]) -> list[str]:
+    seen = set(fetched)
+    tail = [r for r in RECOMMENDED_OLLAMA_IDS if r not in seen]
+    return fetched + tail
 
 
 class _LoginButtonDelegate(AppKit.NSObject):
@@ -51,7 +59,11 @@ class ModelsTab:
         self._on_change = on_change
         self._on_openai_login = on_openai_login
         self._current_backend = config.get("postprocessor", "ollama")
-        self._ollama_models: list[str] = [config.get("ollama_model", "qwen2.5:7b")]
+        recommended = [model_id for model_id, _ in OLLAMA_MODELS]
+        current = config.get("ollama_model", "gemma3:4b")
+        self._ollama_models: list[str] = (
+            recommended if current in recommended else [current] + recommended
+        )
         self._openai_models: list[str] = [config.get("openai_model", "gpt-5.4")]
 
         self._view = AppKit.NSView.alloc().initWithFrame_(
@@ -163,9 +175,9 @@ class ModelsTab:
         )
 
         if self._current_backend == "ollama":
-            model = config.get("ollama_model", "qwen2.5:7b")
+            model = config.get("ollama_model", "gemma3:4b")
             if model not in self._ollama_models:
-                self._ollama_models = [model]
+                self._ollama_models.insert(0, model)
         else:
             model = config.get("openai_model", "gpt-5.4")
             if model not in self._openai_models:
@@ -176,7 +188,7 @@ class ModelsTab:
         self._show_backend_detail()
 
     def refresh_ollama_models(self, models: list[str]):
-        self._ollama_models = models
+        self._ollama_models = merge_ollama_models(models)
         if self._current_backend == "ollama":
             self._refresh_model_dropdown()
 

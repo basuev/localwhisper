@@ -18,8 +18,8 @@ ollama serve &>/dev/null &
 sleep 2
 
 # Pull the LLM model
-echo "Pulling Qwen2.5:3b model..."
-ollama pull qwen2.5:3b
+echo "Pulling gemma3:4b model..."
+ollama pull gemma3:4b
 
 # Set up Python environment
 echo "Setting up Python environment..."

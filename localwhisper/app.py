@@ -28,6 +28,7 @@ from .events import (
 from .history import save_to_history
 from .hotkey import HotkeyListener
 from .overlay import AudioOverlay
+from .constants import OLLAMA_MODELS
 from .models import fetch_ollama_models, load_codex_models
 from .recorder import list_input_devices
 from .sounds import play_sound
@@ -230,13 +231,29 @@ class LocalWhisperApp(rumps.App):
         return f"Model: {backend_label} ({self._current_model})"
 
     def _populate_default_models(self):
-        default_model = self.config["ollama_model"]
-        item = rumps.MenuItem(
-            default_model, callback=self._make_model_callback("ollama", default_model)
-        )
-        if self._current_backend == "ollama" and self._current_model == default_model:
-            item.state = 1
-        self._local_menu[default_model] = item
+        seen = set()
+        for model_id, _ in OLLAMA_MODELS:
+            if model_id not in seen:
+                seen.add(model_id)
+                item = rumps.MenuItem(
+                    model_id,
+                    callback=self._make_model_callback("ollama", model_id),
+                )
+                if (
+                    self._current_backend == "ollama"
+                    and self._current_model == model_id
+                ):
+                    item.state = 1
+                self._local_menu[model_id] = item
+
+        current = self.config["ollama_model"]
+        if current not in seen:
+            item = rumps.MenuItem(
+                current, callback=self._make_model_callback("ollama", current)
+            )
+            if self._current_backend == "ollama" and self._current_model == current:
+                item.state = 1
+            self._local_menu[current] = item
 
         codex_models = load_codex_models()
         openai_models = (
@@ -255,8 +272,11 @@ class LocalWhisperApp(rumps.App):
     def _refresh_models(self):
         ollama_models = fetch_ollama_models(self.config["ollama_url"])
         if ollama_models:
+            recommended = [mid for mid, _ in OLLAMA_MODELS]
+            seen = set(ollama_models)
+            all_models = ollama_models + [r for r in recommended if r not in seen]
             self._local_menu.clear()
-            for name in ollama_models:
+            for name in all_models:
                 item = rumps.MenuItem(
                     name, callback=self._make_model_callback("ollama", name)
                 )

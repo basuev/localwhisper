@@ -79,7 +79,7 @@ see [config.example.yaml](config.example.yaml) for all options. key settings:
 |--------|---------|-------------|
 | `whisper_model` | `mlx-community/whisper-large-v3-mlx` | MLX Whisper model |
 | `language` | `ru` | speech language |
-| `ollama_model` | `qwen2.5:7b` | Ollama LLM model |
+| `ollama_model` | `gemma3:4b` | Ollama LLM model |
 | `postprocessor` | `ollama` | backend: `ollama` or `openai` |
 | `hotkey_keycode` | `61` | hotkey (61 = Right Option) |
 | `model_idle_timeout` | `300` | seconds before unloading model |
