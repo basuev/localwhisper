@@ -8,10 +8,10 @@ import objc
 from localwhisper.config import CONFIG_PATH
 from localwhisper.settings.controls import (
     LABEL_WIDTH,
-    LabeledTextField,
-    LabeledToggle,
     ROW_HEIGHT,
     TOTAL_WIDTH,
+    LabeledTextField,
+    LabeledToggle,
     _make_label,
 )
 from localwhisper.settings.window import (

@@ -7,10 +7,10 @@ import objc
 from localwhisper.constants import OLLAMA_MODELS, WHISPER_MODELS
 from localwhisper.settings.controls import (
     LABEL_WIDTH,
-    LabeledDropdown,
-    LabeledTextField,
     ROW_HEIGHT,
     TOTAL_WIDTH,
+    LabeledDropdown,
+    LabeledTextField,
     _make_label,
 )
 from localwhisper.settings.window import (

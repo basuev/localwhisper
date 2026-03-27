@@ -4,7 +4,7 @@ from typing import Any
 import AppKit
 
 from localwhisper.constants import SPEECH_LANGUAGES, TRANSLATE_LANGUAGES
-from localwhisper.settings.controls import LabeledDropdown, LabeledToggle, ROW_HEIGHT
+from localwhisper.settings.controls import ROW_HEIGHT, LabeledDropdown, LabeledToggle
 from localwhisper.settings.window import (
     CONTAINER_HEIGHT,
     TAB_PADDING_TOP,

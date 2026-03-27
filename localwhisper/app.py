@@ -9,12 +9,12 @@ from PyObjCTools.AppHelper import callAfter
 from . import focus, oauth
 from .clipboard import ClipboardManager
 from .config import load_config, save_config
-from .constants import SPEECH_LANGUAGES, TRANSLATE_LANGUAGES, WHISPER_MODELS
-from .settings.window import SettingsWindow
-from .settings.tabs.general import GeneralTab
-from .settings.tabs.models import ModelsTab
-from .settings.tabs.audio import AudioTab
-from .settings.tabs.advanced import AdvancedTab
+from .constants import (
+    OLLAMA_MODELS,
+    SPEECH_LANGUAGES,
+    TRANSLATE_LANGUAGES,
+    WHISPER_MODELS,
+)
 from .engine import LocalWhisperEngine
 from .events import (
     Cancelled,
@@ -27,10 +27,14 @@ from .events import (
 )
 from .history import save_to_history
 from .hotkey import HotkeyListener
-from .overlay import AudioOverlay
-from .constants import OLLAMA_MODELS
 from .models import fetch_ollama_models, load_codex_models
+from .overlay import AudioOverlay
 from .recorder import list_input_devices
+from .settings.tabs.advanced import AdvancedTab
+from .settings.tabs.audio import AudioTab
+from .settings.tabs.general import GeneralTab
+from .settings.tabs.models import ModelsTab
+from .settings.window import SettingsWindow
 from .sounds import play_sound
 
 log = logging.getLogger(__name__)

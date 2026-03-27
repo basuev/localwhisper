@@ -4,8 +4,6 @@ from collections import defaultdict
 
 import numpy as np
 
-RMS_FULL_SCALE = 0.1
-
 from .events import (
     Cancelled,
     PostProcessingDone,
@@ -22,6 +20,8 @@ from .postprocessor import PostProcessor
 from .recorder import AudioRecorder
 from .streaming import ChunkAccumulator, StreamingTranscriber
 from .transcriber import Transcriber
+
+RMS_FULL_SCALE = 0.1
 
 log = logging.getLogger(__name__)
 
@@ -226,7 +226,10 @@ class LocalWhisperEngine:
 
         self._emit(PostProcessingStarted())
         try:
-            cancel_check = lambda: self._cancelled
+
+            def cancel_check():
+                return self._cancelled
+
             processed_text = self._postprocessor.process(
                 raw_text, cancel_check=cancel_check
             )
