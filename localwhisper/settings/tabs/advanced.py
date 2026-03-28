@@ -1,18 +1,12 @@
-import subprocess
 from collections.abc import Callable
 from typing import Any
 
 import AppKit
-import objc
 
-from localwhisper.config import CONFIG_PATH
 from localwhisper.settings.controls import (
-    LABEL_WIDTH,
     ROW_HEIGHT,
-    TOTAL_WIDTH,
     LabeledTextField,
     LabeledToggle,
-    _make_label,
 )
 from localwhisper.settings.window import (
     CONTAINER_HEIGHT,
@@ -21,18 +15,6 @@ from localwhisper.settings.window import (
     TAB_ROW_GAP,
     WINDOW_WIDTH,
 )
-
-
-class _OpenButtonDelegate(AppKit.NSObject):
-    def initWithPath_(self, path):
-        self = objc.super(_OpenButtonDelegate, self).init()
-        if self is None:
-            return None
-        self._path = path
-        return self
-
-    def onClicked_(self, sender):
-        subprocess.Popen(["open", str(self._path)])
 
 
 class AdvancedTab:
@@ -69,28 +51,6 @@ class AdvancedTab:
         )
         self._idle_timeout.setFrameOrigin_(AppKit.NSMakePoint(TAB_PADDING_X, y))
         self._view.addSubview_(self._idle_timeout)
-
-        y -= ROW_HEIGHT + TAB_ROW_GAP
-
-        prompt_row = AppKit.NSView.alloc().initWithFrame_(
-            AppKit.NSMakeRect(0, 0, TOTAL_WIDTH, ROW_HEIGHT)
-        )
-        prompt_label = _make_label("Prompt")
-        prompt_row.addSubview_(prompt_label)
-
-        self._open_btn = AppKit.NSButton.alloc().initWithFrame_(
-            AppKit.NSMakeRect(LABEL_WIDTH, 0, 160, ROW_HEIGHT)
-        )
-        self._open_btn.setTitle_("Open in Editor...")
-        self._open_btn.setBezelStyle_(AppKit.NSBezelStyleRounded)
-        self._open_delegate = _OpenButtonDelegate.alloc().initWithPath_(CONFIG_PATH)
-        self._open_btn.setTarget_(self._open_delegate)
-        self._open_btn.setAction_(
-            objc.selector(self._open_delegate.onClicked_, signature=b"v@:@")
-        )
-        prompt_row.addSubview_(self._open_btn)
-        prompt_row.setFrameOrigin_(AppKit.NSMakePoint(TAB_PADDING_X, y))
-        self._view.addSubview_(prompt_row)
 
         self.sync(config)
 
