@@ -31,7 +31,6 @@ REQUIRED_CONFIG_KEYS = [
     "language",
     "ollama_model",
     "ollama_url",
-    "postprocess_prompt",
     "hotkey_keycode",
     "model_idle_timeout",
     "sample_rate",
