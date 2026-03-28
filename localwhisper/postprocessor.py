@@ -7,11 +7,24 @@ from localwhisper import oauth
 
 log = logging.getLogger(__name__)
 
+POSTPROCESS_PROMPT = (
+    "Speech-to-text post-processor for developer dictation.\n\n"
+    "Rules:\n"
+    "1. Fix punctuation and capitalization.\n"
+    "2. Technical terms in Latin script: "
+    "commit, deploy, API, Kubernetes, pytest, etc.\n"
+    "3. Russian words stay entirely in Cyrillic. "
+    "Never mix scripts within a word.\n"
+    "4. Keep exact word forms, tone, and style as dictated.\n"
+    "5. Remove false starts and self-corrections, "
+    "keep the final version.\n"
+    "6. Output only the corrected text."
+)
+
 
 class PostProcessor:
     def __init__(self, config: dict):
         self.backend = config.get("postprocessor", "ollama")
-        self.prompt = config["postprocess_prompt"]
         self.translate_to = config.get("translate_to")
 
         self.ollama_model = config["ollama_model"]
@@ -24,16 +37,10 @@ class PostProcessor:
 
     def _build_prompt(self) -> str:
         if not self.translate_to:
-            return self.prompt
+            return POSTPROCESS_PROMPT
         return (
-            f"You are a post-processor for speech-to-text. "
-            f"The input is a dictated message.\n\n"
-            f"Rules:\n"
-            f"1. Fix punctuation and capitalization.\n"
-            f"2. Remove false starts, self-corrections, and word/phrase repetitions. "
-            f"Keep the final version of each rephrased segment.\n"
-            f"3. Translate the result into {self.translate_to}.\n\n"
-            f"Output only the translated text, nothing else."
+            POSTPROCESS_PROMPT
+            + f"\nAlso translate the result into {self.translate_to}."
         )
 
     def switch(self, backend: str, model: str):

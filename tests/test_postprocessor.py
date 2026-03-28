@@ -41,38 +41,36 @@ def test_postprocessor_switch(default_config):
 
 
 def test_postprocessor_builds_translate_prompt(default_config):
-    from localwhisper.postprocessor import PostProcessor
+    from localwhisper.postprocessor import POSTPROCESS_PROMPT, PostProcessor
 
     default_config["translate_to"] = "English"
     pp = PostProcessor(default_config)
-    assert pp.translate_to == "English"
     prompt = pp._build_prompt()
+    assert POSTPROCESS_PROMPT in prompt
     assert "English" in prompt
-    assert "Russian" not in prompt
-    assert default_config["postprocess_prompt"] not in prompt
 
 
 def test_postprocessor_no_translate_prompt(default_config):
-    from localwhisper.postprocessor import PostProcessor
+    from localwhisper.postprocessor import POSTPROCESS_PROMPT, PostProcessor
 
     pp = PostProcessor(default_config)
-    assert pp.translate_to is None
     prompt = pp._build_prompt()
-    assert prompt == default_config["postprocess_prompt"]
+    assert prompt == POSTPROCESS_PROMPT
 
 
 def test_postprocessor_set_translate_to(default_config):
-    from localwhisper.postprocessor import PostProcessor
+    from localwhisper.postprocessor import POSTPROCESS_PROMPT, PostProcessor
 
     pp = PostProcessor(default_config)
     pp.set_translate_to("Japanese")
     assert pp.translate_to == "Japanese"
-    assert "Japanese" in pp._build_prompt()
+    prompt = pp._build_prompt()
+    assert POSTPROCESS_PROMPT in prompt
+    assert "Japanese" in prompt
 
     pp.set_translate_to(None)
     assert pp.translate_to is None
-    prompt = pp._build_prompt()
-    assert prompt == default_config["postprocess_prompt"]
+    assert pp._build_prompt() == POSTPROCESS_PROMPT
 
 
 def test_ollama_request_has_no_thinking_params(default_config, monkeypatch):
