@@ -8,37 +8,6 @@ DEFAULT_CONFIG = {
     "language": "ru",
     "ollama_model": "gemma3:4b",
     "ollama_url": "http://localhost:11434",
-    "postprocess_prompt": (
-        "You are a minimal post-processor for Russian speech-to-text. "
-        "The input is a dictated message in Russian, "
-        "often addressed informally to an AI assistant.\n\n"
-        "Rules:\n"
-        "1. Fix punctuation and capitalization only.\n"
-        "2. English technical terms must be written as whole words in Latin script: "
-        "commit, deploy, rollback, endpoint, health check, "
-        "API, Kubernetes, SaaS, etc.\n"
-        "3. Russian words must stay ENTIRELY in Cyrillic. "
-        "NEVER replace individual Cyrillic letters with Latin lookalikes. "
-        "For example: 'булгур' must stay as 'булгур', NOT 'булgур'.\n"
-        "4. Keep the EXACT word forms as dictated. Do NOT change: "
-        "verb forms (разработай -> разработай, NOT разработаю), "
-        "tone (ты -> ты, NOT вы), "
-        "informal style (давай -> давай, NOT давайте).\n"
-        "5. Do NOT translate to English. The output must be in Russian.\n"
-        "6. Remove false starts, self-corrections, and word/phrase repetitions. "
-        "Keep the final version of each rephrased segment verbatim. "
-        "Also remove correction markers (нет, то есть, точнее, в смысле) "
-        "when they only signal a self-correction. "
-        "Keep them when they carry meaning (e.g. disagreement).\n\n"
-        "Examples of false-start cleanup:\n"
-        '- "Нам нужно сделать деплой, нет, нам нужно сначала прогнать тесты" '
-        '-> "Нам нужно сначала прогнать тесты"\n'
-        '- "Нужно закоммитить... запушить изменения" '
-        '-> "Нужно запушить изменения"\n'
-        '- "Нужно нужно сделать ревью" '
-        '-> "Нужно сделать ревью"\n\n'
-        "Output only the corrected text, nothing else."
-    ),
     "hotkey_keycode": 61,
     "model_idle_timeout": 300,
     "sample_rate": 16000,
@@ -73,7 +42,7 @@ def load_config(config_path: Path | None = None) -> dict:
             shutil.copy(example, config_path)
         else:
             with open(config_path, "w") as f:
-                yaml.dump(
+                yaml.safe_dump(
                     DEFAULT_CONFIG, f, default_flow_style=False, allow_unicode=True
                 )
 
@@ -91,4 +60,4 @@ def save_config(updates: dict, config_path: Path | None = None) -> None:
         current = yaml.safe_load(f) or {}
     current.update(updates)
     with open(config_path, "w") as f:
-        yaml.dump(current, f, default_flow_style=False, allow_unicode=True)
+        yaml.safe_dump(current, f, default_flow_style=False, allow_unicode=True)
