@@ -323,8 +323,6 @@ class LocalWhisperEngine:
             self._transcriber.idle_timeout = updates["model_idle_timeout"]
         if "translate_to" in updates:
             self._postprocessor.set_translate_to(updates.get("translate_to"))
-        if "postprocess_prompt" in updates:
-            self._postprocessor.prompt = updates["postprocess_prompt"]
         if "ollama_url" in updates:
             self._postprocessor.ollama_url = updates["ollama_url"]
         pp_keys = {"postprocessor", "ollama_model", "openai_model"}
