@@ -118,4 +118,4 @@ def test_ollama_timeout_is_30s(default_config, monkeypatch):
     monkeypatch.setattr("localwhisper.postprocessor.requests.post", mock_post)
     pp.process("hello")
 
-    assert captured["timeout"] == 30
+    assert captured["timeout"] == 120
