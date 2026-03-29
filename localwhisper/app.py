@@ -1,4 +1,5 @@
 import logging
+import math
 import sys
 import threading
 
@@ -40,44 +41,52 @@ from .sounds import play_sound
 log = logging.getLogger(__name__)
 
 
-def _make_icon(symbol_name: str, with_dot: bool = False) -> AppKit.NSImage:
-    symbol_config = (
-        AppKit.NSImageSymbolConfiguration.configurationWithPointSize_weight_scale_(
-            14, AppKit.NSFontWeightRegular, 2
+_ICON_SIZE = 18.0
+_ICON_BLOB_RADIUS = 7.0
+_ICON_N_POINTS = 64
+
+
+def _make_blob_icon() -> AppKit.NSImage:
+    cx = _ICON_SIZE / 2
+    cy = _ICON_SIZE / 2
+    t = 1.0
+    points = []
+    for i in range(_ICON_N_POINTS):
+        theta = 2 * math.pi * i / _ICON_N_POINTS
+        deform = (
+            math.sin(3 * theta + t * 2.0) * 0.12
+            + math.sin(5 * theta - t * 1.5) * 0.08
+            + math.sin(7 * theta + t * 0.9) * 0.05
         )
+        r = _ICON_BLOB_RADIUS * (1.0 + deform)
+        points.append((cx + r * math.cos(theta), cy + r * math.sin(theta)))
+
+    n = len(points)
+    path = AppKit.NSBezierPath.bezierPath()
+    path.moveToPoint_(AppKit.NSMakePoint(*points[0]))
+    for i in range(n):
+        p0 = points[(i - 1) % n]
+        p1 = points[i]
+        p2 = points[(i + 1) % n]
+        p3 = points[(i + 2) % n]
+        cp1 = (p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6)
+        cp2 = (p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6)
+        path.curveToPoint_controlPoint1_controlPoint2_(
+            AppKit.NSMakePoint(*p2),
+            AppKit.NSMakePoint(*cp1),
+            AppKit.NSMakePoint(*cp2),
+        )
+    path.closePath()
+
+    image = AppKit.NSImage.alloc().initWithSize_(
+        AppKit.NSMakeSize(_ICON_SIZE, _ICON_SIZE)
     )
-    image = AppKit.NSImage.imageWithSystemSymbolName_accessibilityDescription_(
-        symbol_name, None
-    )
-    image = image.imageWithSymbolConfiguration_(symbol_config)
+    image.lockFocus()
+    AppKit.NSColor.blackColor().setFill()
+    path.fill()
+    image.unlockFocus()
     image.setTemplate_(True)
-
-    if not with_dot:
-        return image
-
-    size = image.size()
-    new_image = AppKit.NSImage.alloc().initWithSize_(size)
-    new_image.lockFocus()
-
-    image.drawInRect_fromRect_operation_fraction_(
-        AppKit.NSMakeRect(0, 0, size.width, size.height),
-        AppKit.NSZeroRect,
-        AppKit.NSCompositingOperationSourceOver,
-        1.0,
-    )
-
-    dot_size = 5
-    dot_x = size.width - dot_size - 1
-    dot_y = size.height - dot_size - 1
-    dot_rect = AppKit.NSMakeRect(dot_x, dot_y, dot_size, dot_size)
-
-    AppKit.NSColor.redColor().setFill()
-    AppKit.NSBezierPath.bezierPathWithOvalInRect_(dot_rect).fill()
-
-    new_image.unlockFocus()
-    new_image.setTemplate_(False)
-
-    return new_image
+    return image
 
 
 class LocalWhisperApp(rumps.App):
@@ -93,11 +102,7 @@ class LocalWhisperApp(rumps.App):
         self._audio_tab = None
         self._advanced_tab = None
 
-        self._icon_idle = _make_icon("mic")
-        self._icon_recording = _make_icon("mic.fill", with_dot=True)
-        self._icon_processing = _make_icon("ellipsis.circle")
-
-        self._set_icon(self._icon_idle)
+        self._set_icon(_make_blob_icon())
 
         self._current_backend = self.config.get("postprocessor", "ollama")
         if self._current_backend == "ollama":
@@ -746,7 +751,6 @@ class LocalWhisperApp(rumps.App):
 
     def _handle_recording_started(self):
         self._recording_source_app = focus.capture()
-        self._set_icon(self._icon_recording)
         self._overlay.show()
         play_sound(self.config["sound_start"])
 
@@ -755,7 +759,6 @@ class LocalWhisperApp(rumps.App):
 
     def _handle_recording_failed(self):
         self._overlay.hide()
-        self._set_icon(self._icon_idle)
         play_sound(self.config["sound_error"])
 
     def _on_recording_done(self, event):
@@ -763,7 +766,6 @@ class LocalWhisperApp(rumps.App):
 
     def _handle_recording_done(self):
         self._overlay.set_mode("processing")
-        self._set_icon(self._icon_processing)
         play_sound(self.config["sound_stop"])
 
     def _on_transcription_failed(self, event):
@@ -772,7 +774,6 @@ class LocalWhisperApp(rumps.App):
 
     def _handle_transcription_failed(self):
         self._overlay.hide()
-        self._set_icon(self._icon_idle)
         play_sound(self.config["sound_error"])
 
     def _on_post_processing_done(self, event):
@@ -786,7 +787,6 @@ class LocalWhisperApp(rumps.App):
 
     def _handle_cancelled(self):
         self._overlay.hide()
-        self._set_icon(self._icon_idle)
         play_sound(self.config["sound_cancel"])
 
     def _finish(self, raw_text, processed_text):
@@ -794,7 +794,6 @@ class LocalWhisperApp(rumps.App):
         focus.restore(self._recording_source_app)
         self.clipboard.paste(processed_text)
         save_to_history(raw_text, processed_text)
-        self._set_icon(self._icon_idle)
 
 
 def main():
