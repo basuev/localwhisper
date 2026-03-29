@@ -79,3 +79,62 @@ def test_apply_empty_dictionary(tmp_path):
     path = tmp_path / "dictionary.yaml"
     d = UserDictionary(path)
     assert d.apply("some text") == "some text"
+
+
+def test_diff_simple_replacement():
+    from localwhisper.dictionary import UserDictionary
+
+    replacements = UserDictionary.diff("деплой на кубернетис", "deploy на Kubernetes")
+    assert ("деплой", "deploy") in replacements
+    assert ("кубернетис", "Kubernetes") in replacements
+    assert len(replacements) == 2
+
+
+def test_diff_no_changes():
+    from localwhisper.dictionary import UserDictionary
+
+    replacements = UserDictionary.diff("hello world", "hello world")
+    assert replacements == []
+
+
+def test_diff_ignores_insertions_and_deletions():
+    from localwhisper.dictionary import UserDictionary
+
+    replacements = UserDictionary.diff("a b c", "a x b c y")
+    assert replacements == []
+
+
+def test_diff_multiple_word_replacement():
+    from localwhisper.dictionary import UserDictionary
+
+    replacements = UserDictionary.diff("кубернетис кластер", "Kubernetes cluster")
+    assert ("кубернетис", "Kubernetes") in replacements
+    assert ("кластер", "cluster") in replacements
+
+
+def test_add_conflict_returns_old_value(tmp_path):
+    from localwhisper.dictionary import UserDictionary
+
+    path = tmp_path / "dictionary.yaml"
+    d = UserDictionary(path)
+    assert d.add("деплой", "deploy") is None
+    conflict = d.add("деплой", "деплою")
+    assert conflict == "deploy"
+
+
+def test_add_same_value_no_conflict(tmp_path):
+    from localwhisper.dictionary import UserDictionary
+
+    path = tmp_path / "dictionary.yaml"
+    d = UserDictionary(path)
+    d.add("деплой", "deploy")
+    assert d.add("деплой", "deploy") is None
+
+
+def test_similarity_check():
+    from localwhisper.dictionary import UserDictionary
+
+    assert UserDictionary.is_similar("деплой на сервер", "deploy на сервер", 0.4)
+    assert not UserDictionary.is_similar(
+        "деплой на сервер", "совсем другой текст вообще не связан", 0.4
+    )

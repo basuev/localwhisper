@@ -1,3 +1,4 @@
+import difflib
 import re
 from pathlib import Path
 
@@ -42,6 +43,25 @@ class UserDictionary:
         self._entries.append((from_word, to_word))
         self._save()
         return None
+
+    @staticmethod
+    def diff(original: str, corrected: str) -> list[tuple[str, str]]:
+        original_words = original.split()
+        corrected_words = corrected.split()
+        matcher = difflib.SequenceMatcher(None, original_words, corrected_words)
+        replacements = []
+        for op, i1, i2, j1, j2 in matcher.get_opcodes():
+            if op == "replace" and (i2 - i1) == (j2 - j1):
+                for orig, corr in zip(
+                    original_words[i1:i2], corrected_words[j1:j2], strict=True
+                ):
+                    if orig != corr:
+                        replacements.append((orig, corr))
+        return replacements
+
+    @staticmethod
+    def is_similar(text_a: str, text_b: str, threshold: float) -> bool:
+        return difflib.SequenceMatcher(None, text_a, text_b).ratio() >= threshold
 
     def apply(self, text: str) -> str:
         sorted_entries = sorted(self._entries, key=lambda e: len(e[0]), reverse=True)
