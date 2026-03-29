@@ -217,6 +217,10 @@ class LocalWhisperApp(rumps.App):
             callback=self._on_hotkey,
             cancel_callback=self._on_cancel,
             keycode=self.config["hotkey_keycode"],
+            feedback_callback=self._on_feedback,
+            double_click_timeout_ms=self.config.get(
+                "feedback_double_click_timeout", 300
+            ),
         )
         self.hotkey_listener.start()
 
@@ -689,6 +693,43 @@ class LocalWhisperApp(rumps.App):
 
     def _on_hotkey(self):
         callAfter(lambda: self.engine.toggle())
+
+    def _on_feedback(self):
+        callAfter(self._handle_feedback)
+
+    def _handle_feedback(self):
+        clipboard_text = self.clipboard._get_clipboard()
+        if not clipboard_text:
+            return
+
+        result = self.engine.feedback(clipboard_text)
+        if result is None:
+            return
+
+        for from_word, old_to, new_to in result.conflicts:
+            response = rumps.alert(
+                title="dictionary conflict",
+                message=(
+                    f"'{from_word}' already maps to '{old_to}'.\n"
+                    f"replace with '{new_to}'?"
+                ),
+                ok="replace",
+                cancel="keep",
+            )
+            if response == 1:
+                self.engine._dictionary._entries = [
+                    (f, t) if f.lower() != from_word.lower() else (from_word, new_to)
+                    for f, t in self.engine._dictionary._entries
+                ]
+                self.engine._dictionary._save()
+
+        if result.added:
+            words = ", ".join(f"'{f}' -> '{t}'" for f, t in result.added)
+            rumps.notification(
+                title="dictionary updated",
+                subtitle="",
+                message=words,
+            )
 
     def _on_cancel(self) -> bool:
         if self.engine.state == "idle":
