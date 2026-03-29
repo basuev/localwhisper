@@ -12,6 +12,7 @@ log = logging.getLogger(__name__)
 PANEL_SIZE = 240.0
 BASE_RADIUS = 28.0
 MAX_RADIUS = 65.0
+PULSE_DURATION = 0.5
 N_POINTS = 64
 
 _THEMES = {
@@ -124,28 +125,27 @@ class BlobView(AppKit.NSView):
         colorspace = Quartz.CGColorSpaceCreateDeviceGray()
 
         if self._shimmer:
-            for i in range(3):
-                phase = t * 1.6 + i * (2 * math.pi / 3)
-                dx = 0.6 * math.cos(phase)
-                dy = 0.6 * math.sin(phase)
-                gray = min(base_gray + 0.35, 1.0)
-                gradient = Quartz.CGGradientCreateWithColorComponents(
-                    colorspace,
-                    [gray, 0.5, gray, 0.0],
-                    [0.0, 1.0],
-                    2,
-                )
-                sx = cx + radius * dx
-                sy = cy + radius * dy
-                Quartz.CGContextDrawRadialGradient(
-                    ctx,
-                    gradient,
-                    Quartz.CGPointMake(sx, sy),
-                    0,
-                    Quartz.CGPointMake(sx, sy),
-                    radius * 1.2,
-                    Quartz.kCGGradientDrawsBeforeStartLocation,
-                )
+            dx = 0.5 * math.cos(t * 2.0 + math.sin(t * 0.9) * 0.4)
+            dy = 0.5 * math.sin(t * 1.5 + math.cos(t * 0.9) * 0.4)
+            gray = min(base_gray + 0.25, 1.0)
+            alpha = 0.35 + 0.1 * math.sin(t * 2.0)
+            gradient = Quartz.CGGradientCreateWithColorComponents(
+                colorspace,
+                [gray, alpha, gray, 0.0],
+                [0.0, 1.0],
+                2,
+            )
+            sx = cx + radius * dx
+            sy = cy + radius * dy
+            Quartz.CGContextDrawRadialGradient(
+                ctx,
+                gradient,
+                Quartz.CGPointMake(sx, sy),
+                0,
+                Quartz.CGPointMake(sx, sy),
+                radius * 1.5,
+                Quartz.kCGGradientDrawsBeforeStartLocation,
+            )
         else:
             for gray, alpha, dx, dy, spread in spots:
                 gradient = Quartz.CGGradientCreateWithColorComponents(
@@ -200,6 +200,7 @@ class AudioOverlay:
         self._start_time = 0.0
         self._theme = theme
         self._mode = "recording"
+        self._pulse_start = None
 
     def set_theme(self, name):
         self._theme = name
@@ -210,6 +211,8 @@ class AudioOverlay:
         self._mode = mode
         if self._blob_view is not None:
             self._blob_view.setShimmer_(mode == "processing")
+        if mode == "pulse":
+            self._pulse_start = time.monotonic()
         if self._timer is not None:
             self._timer.invalidate()
             fps = 30.0 if mode == "processing" else 60.0
@@ -243,6 +246,7 @@ class AudioOverlay:
             with self._lock:
                 self._amplitude = 0.0
             self._mode = "recording"
+            self._pulse_start = None
             self._blob_view.setShimmer_(False)
             self._blob_view.setAmplitude_(0.0)
             self._start_time = time.monotonic()
@@ -272,7 +276,14 @@ class AudioOverlay:
     def _tick(self):
         try:
             t = time.monotonic() - self._start_time
-            if self._mode == "processing":
+            if self._mode == "pulse":
+                elapsed = time.monotonic() - self._pulse_start
+                if elapsed >= PULSE_DURATION:
+                    self.hide()
+                    return
+                progress = elapsed / PULSE_DURATION
+                amp = math.sin(math.pi * progress)
+            elif self._mode == "processing":
                 amp = 0.15 + 0.10 * math.sin(t * 1.8)
             else:
                 with self._lock:

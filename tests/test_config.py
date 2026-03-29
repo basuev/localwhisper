@@ -41,6 +41,7 @@ REQUIRED_CONFIG_KEYS = [
     "sound_start",
     "sound_stop",
     "sound_cancel",
+    "sound_feedback",
     "postprocess",
     "streaming",
     "chunk_duration",

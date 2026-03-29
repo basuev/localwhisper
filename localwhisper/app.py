@@ -695,7 +695,15 @@ class LocalWhisperApp(rumps.App):
         callAfter(lambda: self.engine.toggle())
 
     def _on_feedback(self):
+        callAfter(self._show_feedback_pulse)
         callAfter(self._handle_feedback)
+
+    def _show_feedback_pulse(self):
+        play_sound(
+            self.config.get("sound_feedback", "/System/Library/Sounds/Glass.aiff")
+        )
+        self._overlay.show()
+        self._overlay.set_mode("pulse")
 
     def _handle_feedback(self):
         clipboard_text = self.clipboard._get_clipboard()

@@ -19,6 +19,7 @@ DEFAULT_CONFIG = {
     "sound_stop": "/System/Library/Sounds/Pop.aiff",
     "sound_cancel": "/System/Library/Sounds/Funk.aiff",
     "sound_error": "/System/Library/Sounds/Sosumi.aiff",
+    "sound_feedback": "/System/Library/Sounds/Glass.aiff",
     "input_device": None,
     "postprocessor": "ollama",
     "openai_model": "gpt-5.4",
