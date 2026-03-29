@@ -4,8 +4,10 @@ from collections import defaultdict
 
 import numpy as np
 
+from .dictionary import UserDictionary
 from .events import (
     Cancelled,
+    FeedbackResult,
     PostProcessingDone,
     PostProcessingFailed,
     PostProcessingStarted,
@@ -48,6 +50,8 @@ class LocalWhisperEngine:
         )
         self._transcriber = Transcriber(config)
         self._postprocessor = PostProcessor(config)
+        self._dictionary = UserDictionary()
+        self._last_inserted_text = None
 
     @property
     def state(self) -> str:
@@ -216,10 +220,12 @@ class LocalWhisperEngine:
             return
 
         if not self._config.get("postprocess", True):
+            processed_text = self._dictionary.apply(raw_text)
+            self._last_inserted_text = processed_text
             self._emit(
                 PostProcessingDone(
                     raw_text=raw_text,
-                    processed_text=raw_text,
+                    processed_text=processed_text,
                 )
             )
             return
@@ -233,6 +239,8 @@ class LocalWhisperEngine:
             processed_text = self._postprocessor.process(
                 raw_text, cancel_check=cancel_check
             )
+            processed_text = self._dictionary.apply(processed_text)
+            self._last_inserted_text = processed_text
             self._emit(
                 PostProcessingDone(
                     raw_text=raw_text,
@@ -333,6 +341,28 @@ class LocalWhisperEngine:
             else:
                 model = self._config["ollama_model"]
             self._postprocessor.switch(backend, model)
+
+    def feedback(self, clipboard_text: str) -> FeedbackResult | None:
+        if not self._last_inserted_text:
+            return None
+
+        threshold = self._config.get("dictionary_similarity_threshold", 0.4)
+        if not UserDictionary.is_similar(
+            self._last_inserted_text, clipboard_text, threshold
+        ):
+            return None
+
+        replacements = UserDictionary.diff(self._last_inserted_text, clipboard_text)
+        added = []
+        conflicts = []
+        for from_word, to_word in replacements:
+            old_to = self._dictionary.add(from_word, to_word)
+            if old_to is not None:
+                conflicts.append((from_word, old_to, to_word))
+            else:
+                added.append((from_word, to_word))
+
+        return FeedbackResult(added=added, conflicts=conflicts)
 
     def shutdown(self) -> None:
         self.cancel()
