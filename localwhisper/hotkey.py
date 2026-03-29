@@ -1,9 +1,50 @@
 import threading
+import time
 from collections.abc import Callable
 
 import Quartz
 
 ESCAPE_KEYCODE = 53
+
+
+class DoubleClickDetector:
+    def __init__(self, callback, feedback_callback, timeout_ms=300):
+        self._callback = callback
+        self._feedback_callback = feedback_callback
+        self._timeout_ms = timeout_ms
+        self._last_release_time = 0.0
+        self._pending_timer: threading.Timer | None = None
+
+    def on_release(self):
+        now = time.monotonic()
+        elapsed_ms = (now - self._last_release_time) * 1000
+
+        if self._pending_timer is not None:
+            self._pending_timer.cancel()
+            self._pending_timer = None
+
+        if elapsed_ms <= self._timeout_ms and self._last_release_time > 0:
+            self._last_release_time = 0.0
+            self._feedback_callback()
+        else:
+            self._last_release_time = now
+            self._pending_timer = threading.Timer(
+                self._timeout_ms / 1000, self._fire_single
+            )
+            self._pending_timer.daemon = True
+            self._pending_timer.start()
+
+    def _fire_single(self):
+        self._pending_timer = None
+        self._last_release_time = 0.0
+        self._callback()
+
+    def flush(self):
+        if self._pending_timer is not None:
+            self._pending_timer.cancel()
+            self._pending_timer = None
+            self._last_release_time = 0.0
+            self._callback()
 
 
 class HotkeyListener:
