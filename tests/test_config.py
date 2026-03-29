@@ -15,6 +15,7 @@ MODULES = [
     "localwhisper.events",
     "localwhisper.engine",
     "localwhisper.streaming",
+    "localwhisper.dictionary",
     "localwhisper.constants",
     "localwhisper.app",
     "localwhisper.settings",

@@ -55,5 +55,11 @@ class Cancelled:
 
 
 @dataclass
+class FeedbackResult:
+    added: list
+    conflicts: list
+
+
+@dataclass
 class EngineReady:
     pass

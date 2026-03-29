@@ -1,4 +1,5 @@
 import shutil
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -26,28 +27,43 @@ DEFAULT_CONFIG = {
     "streaming": True,
     "chunk_duration": 5.0,
     "blob_theme": "dark",
+    "feedback_double_click_timeout": 300,
+    "dictionary_similarity_threshold": 0.4,
 }
 
 CONFIG_DIR = Path.home() / ".config" / "localwhisper"
 CONFIG_PATH = CONFIG_DIR / "config.yaml"
 
 
+def _write_config(config_path: Path, data: dict) -> None:
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=config_path.parent, suffix=".yaml.tmp")
+    try:
+        with open(fd, "w") as f:
+            yaml.safe_dump(data, f, default_flow_style=False, allow_unicode=True)
+        Path(tmp).replace(config_path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
 def load_config(config_path: Path | None = None) -> dict:
     config_path = config_path or CONFIG_PATH
 
     if not config_path.exists():
-        config_path.parent.mkdir(parents=True, exist_ok=True)
         example = Path(__file__).parent.parent / "config.example.yaml"
         if example.exists():
+            config_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(example, config_path)
         else:
-            with open(config_path, "w") as f:
-                yaml.safe_dump(
-                    DEFAULT_CONFIG, f, default_flow_style=False, allow_unicode=True
-                )
+            _write_config(config_path, DEFAULT_CONFIG)
 
     with open(config_path) as f:
         user_config = yaml.safe_load(f) or {}
+
+    if not user_config and config_path.stat().st_size == 0:
+        _write_config(config_path, DEFAULT_CONFIG)
+        user_config = dict(DEFAULT_CONFIG)
 
     config = {**DEFAULT_CONFIG, **user_config}
     return config
@@ -59,5 +75,4 @@ def save_config(updates: dict, config_path: Path | None = None) -> None:
     with open(config_path) as f:
         current = yaml.safe_load(f) or {}
     current.update(updates)
-    with open(config_path, "w") as f:
-        yaml.safe_dump(current, f, default_flow_style=False, allow_unicode=True)
+    _write_config(config_path, current)
