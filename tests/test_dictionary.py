@@ -120,6 +120,7 @@ def test_add_conflict_returns_old_value(tmp_path):
     assert d.add("деплой", "deploy") is None
     conflict = d.add("деплой", "деплою")
     assert conflict == "deploy"
+    assert d.entries == [("деплой", "deploy")]
 
 
 def test_add_same_value_no_conflict(tmp_path):
@@ -129,6 +130,16 @@ def test_add_same_value_no_conflict(tmp_path):
     d = UserDictionary(path)
     d.add("деплой", "deploy")
     assert d.add("деплой", "deploy") is None
+
+
+def test_resolve_conflict(tmp_path):
+    from localwhisper.dictionary import UserDictionary
+
+    path = tmp_path / "dictionary.yaml"
+    d = UserDictionary(path)
+    d.add("деплой", "deploy")
+    d.resolve_conflict("деплой", "деплою")
+    assert d.entries == [("деплой", "деплою")]
 
 
 def test_similarity_check():

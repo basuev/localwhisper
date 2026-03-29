@@ -32,17 +32,23 @@ class UserDictionary:
             yaml.safe_dump(data, f, default_flow_style=False, allow_unicode=True)
 
     def add(self, from_word: str, to_word: str) -> str | None:
-        for i, (f, t) in enumerate(self._entries):
+        for _i, (f, t) in enumerate(self._entries):
             if f.lower() == from_word.lower():
                 if t == to_word:
                     return None
-                old_to = t
-                self._entries[i] = (from_word, to_word)
-                self._save()
-                return old_to
+                return t
         self._entries.append((from_word, to_word))
         self._save()
         return None
+
+    def resolve_conflict(self, from_word: str, to_word: str):
+        for i, (f, _t) in enumerate(self._entries):
+            if f.lower() == from_word.lower():
+                self._entries[i] = (from_word, to_word)
+                self._save()
+                return
+        self._entries.append((from_word, to_word))
+        self._save()
 
     @staticmethod
     def diff(original: str, corrected: str) -> list[tuple[str, str]]:
@@ -67,5 +73,5 @@ class UserDictionary:
         sorted_entries = sorted(self._entries, key=lambda e: len(e[0]), reverse=True)
         for from_word, to_word in sorted_entries:
             pattern = r"\b" + re.escape(from_word) + r"\b"
-            text = re.sub(pattern, to_word, text, flags=re.IGNORECASE)
+            text = re.sub(pattern, to_word, text, flags=re.IGNORECASE | re.UNICODE)
         return text

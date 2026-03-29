@@ -717,11 +717,7 @@ class LocalWhisperApp(rumps.App):
                 cancel="keep",
             )
             if response == 1:
-                self.engine._dictionary._entries = [
-                    (f, t) if f.lower() != from_word.lower() else (from_word, new_to)
-                    for f, t in self.engine._dictionary._entries
-                ]
-                self.engine._dictionary._save()
+                self.engine._dictionary.resolve_conflict(from_word, new_to)
 
         if result.added:
             words = ", ".join(f"'{f}' -> '{t}'" for f, t in result.added)

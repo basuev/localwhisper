@@ -56,8 +56,8 @@ class Cancelled:
 
 @dataclass
 class FeedbackResult:
-    added: list
-    conflicts: list
+    added: list[tuple[str, str]]
+    conflicts: list[tuple[str, str, str]]
 
 
 @dataclass
