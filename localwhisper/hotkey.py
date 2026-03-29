@@ -63,6 +63,8 @@ class HotkeyListener:
         callback: Callable[[], None],
         cancel_callback: Callable[[], bool],
         keycode: int | None = None,
+        feedback_callback: Callable[[], None] | None = None,
+        double_click_timeout_ms: int = 300,
     ):
         self.callback = callback
         self.cancel_callback = cancel_callback
@@ -71,6 +73,12 @@ class HotkeyListener:
         self._other_key_pressed = False
         self._escape_swallowed = False
         self._thread: threading.Thread | None = None
+        if feedback_callback:
+            self._detector = DoubleClickDetector(
+                callback, feedback_callback, double_click_timeout_ms
+            )
+        else:
+            self._detector = None
 
     def start(self):
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -120,7 +128,10 @@ class HotkeyListener:
                 elif not option_down and self._right_option_down:
                     self._right_option_down = False
                     if not self._other_key_pressed:
-                        self.callback()
+                        if self._detector:
+                            self._detector.on_release()
+                        else:
+                            self.callback()
 
         elif event_type == Quartz.kCGEventKeyDown:
             if keycode == ESCAPE_KEYCODE and self.cancel_callback():
