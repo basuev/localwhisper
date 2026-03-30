@@ -192,8 +192,7 @@ def _make_panel(rect):
 
 class AudioOverlay:
     def __init__(self, theme="dark"):
-        self._panel = None
-        self._blob_view = None
+        self._panels = []
         self._timer = None
         self._amplitude = 0.0
         self._lock = threading.Lock()
@@ -204,13 +203,13 @@ class AudioOverlay:
 
     def set_theme(self, name):
         self._theme = name
-        if self._blob_view is not None:
-            self._blob_view.setTheme_(name)
+        for _, blob_view in self._panels:
+            blob_view.setTheme_(name)
 
     def set_mode(self, mode):
         self._mode = mode
-        if self._blob_view is not None:
-            self._blob_view.setShimmer_(mode == "processing")
+        for _, blob_view in self._panels:
+            blob_view.setShimmer_(mode == "processing")
         if mode == "pulse":
             self._pulse_start = time.monotonic()
         if self._timer is not None:
@@ -224,33 +223,36 @@ class AudioOverlay:
 
     def show(self):
         try:
-            screen = AppKit.NSScreen.mainScreen()
-            if screen is None:
+            screens = AppKit.NSScreen.screens()
+            if not screens:
                 return
-            sf = screen.frame()
-            x = sf.origin.x + (sf.size.width - PANEL_SIZE) / 2
-            y = sf.origin.y + (sf.size.height - PANEL_SIZE) / 2
-            rect = AppKit.NSMakeRect(x, y, PANEL_SIZE, PANEL_SIZE)
 
-            if self._panel is None:
-                self._panel = _make_panel(rect)
+            for panel, _ in self._panels:
+                panel.orderOut_(None)
+            self._panels = []
 
-                self._blob_view = BlobView.alloc().initWithFrame_(
+            for screen in screens:
+                sf = screen.frame()
+                x = sf.origin.x + (sf.size.width - PANEL_SIZE) / 2
+                y = sf.origin.y + (sf.size.height - PANEL_SIZE) / 2
+                rect = AppKit.NSMakeRect(x, y, PANEL_SIZE, PANEL_SIZE)
+
+                panel = _make_panel(rect)
+                blob_view = BlobView.alloc().initWithFrame_(
                     AppKit.NSMakeRect(0, 0, PANEL_SIZE, PANEL_SIZE)
                 )
-                self._blob_view.setTheme_(self._theme)
-                self._panel.setContentView_(self._blob_view)
-            else:
-                self._panel.setFrame_display_(rect, False)
+                blob_view.setTheme_(self._theme)
+                panel.setContentView_(blob_view)
+                self._panels.append((panel, blob_view))
 
             with self._lock:
                 self._amplitude = 0.0
             self._mode = "recording"
             self._pulse_start = None
-            self._blob_view.setShimmer_(False)
-            self._blob_view.setAmplitude_(0.0)
             self._start_time = time.monotonic()
-            self._panel.orderFrontRegardless()
+
+            for panel, _ in self._panels:
+                panel.orderFrontRegardless()
 
             if self._timer is not None:
                 self._timer.invalidate()
@@ -266,8 +268,8 @@ class AudioOverlay:
         if self._timer is not None:
             self._timer.invalidate()
             self._timer = None
-        if self._panel is not None:
-            self._panel.orderOut_(None)
+        for panel, _ in self._panels:
+            panel.orderOut_(None)
 
     def update_amplitude(self, value):
         with self._lock:
@@ -288,8 +290,9 @@ class AudioOverlay:
             else:
                 with self._lock:
                     amp = self._amplitude
-            self._blob_view.setAmplitude_(amp)
-            self._blob_view.setTime_(t)
-            self._blob_view.setNeedsDisplay_(True)
+            for _, blob_view in self._panels:
+                blob_view.setAmplitude_(amp)
+                blob_view.setTime_(t)
+                blob_view.setNeedsDisplay_(True)
         except Exception:
             log.exception("overlay tick failed")
