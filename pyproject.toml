@@ -11,6 +11,7 @@ dependencies = [
     "rumps>=0.4.0",
     "pyobjc-framework-Cocoa>=10.0",
     "pyobjc-framework-Quartz>=10.0",
+    "pyobjc-framework-ServiceManagement>=10.0",
     "requests>=2.31.0",
     "soundfile>=0.12.0",
 ]
@@ -20,6 +21,7 @@ localwhisper = "localwhisper.app:main"
 
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-timeout>=2.2"]
+packaging = ["pyinstaller>=6.11.1"]
 
 [build-system]
 requires = ["hatchling"]
