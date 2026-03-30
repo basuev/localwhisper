@@ -3,16 +3,24 @@ import logging
 import subprocess
 from pathlib import Path
 
+from .paths import is_bundled_app
+
 log = logging.getLogger(__name__)
 
 
-def _notify(message: str):
+def notify(message: str):
     safe = message.replace("\\", "\\\\").replace('"', '\\"')
     subprocess.Popen(
-        ["osascript", "-e", f'display notification "{safe}" with title "LocalWhisper"'],
+        ["osascript", "-e", f'display notification "{safe}" with title "localwhisper"'],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+
+
+def _install_hint() -> str:
+    if is_bundled_app():
+        return "Reinstall localwhisper via Homebrew Cask."
+    return "Run uv sync."
 
 
 def _check_imports() -> bool:
@@ -22,9 +30,9 @@ def _check_imports() -> bool:
             missing.append(mod)
 
     if missing:
-        msg = f"Missing packages: {', '.join(missing)}. Run install.sh"
+        msg = f"Missing packages: {', '.join(missing)}. {_install_hint()}"
         log.error(msg)
-        _notify(msg)
+        notify(msg)
         return False
     return True
 
@@ -39,15 +47,12 @@ def is_model_cached(model_repo: str) -> bool:
 
 def _check_whisper_model(model_repo: str) -> bool:
     if not is_model_cached(model_repo):
-        msg = f"Whisper model not downloaded: {model_repo}. Run install.sh"
+        msg = f"Whisper model not downloaded yet: {model_repo}."
         log.error(msg)
-        _notify(msg)
+        notify(msg)
         return False
     return True
 
 
 def run_checks(config: dict) -> bool:
-    if not _check_imports():
-        return False
-
-    return _check_whisper_model(config["whisper_model"])
+    return _check_imports()

@@ -28,6 +28,8 @@ from .events import (
 )
 from .history import save_to_history
 from .hotkey import HotkeyListener
+from .logging_config import configure_logging
+from .login_item import sync as sync_login_item
 from .models import fetch_ollama_models, load_codex_models
 from .overlay import AudioOverlay
 from .recorder import list_input_devices
@@ -211,6 +213,7 @@ class LocalWhisperApp(rumps.App):
         self.engine = LocalWhisperEngine(self.config)
         self._overlay = AudioOverlay(theme=self.config.get("blob_theme", "dark"))
         self.engine.set_amplitude_callback(self._overlay.update_amplitude)
+        self._sync_launch_at_login()
 
         self.engine.on(RecordingStarted, self._on_recording_started)
         self.engine.on(RecordingFailed, self._on_recording_failed)
@@ -220,6 +223,7 @@ class LocalWhisperApp(rumps.App):
         self.engine.on(PostProcessingFailed, self._on_post_processing_failed)
         self.engine.on(Cancelled, self._on_cancelled)
 
+        self._ensure_whisper_model()
         threading.Thread(target=self.engine._transcriber.preload, daemon=True).start()
         log.info(
             "Post-processing model: %s / %s", self._current_backend, self._current_model
@@ -490,12 +494,18 @@ class LocalWhisperApp(rumps.App):
         try:
             from huggingface_hub import snapshot_download
 
+            from .preflight import notify
+
             snapshot_download(repo_id=model_id)
             log.info("model downloaded: %s", model_id)
+            notify(f"Whisper model ready: {model_id}")
             if self.config.get("whisper_model") == model_id:
                 self.engine._transcriber.preload()
         except Exception:
             log.exception("failed to download model: %s", model_id)
+            from .preflight import notify
+
+            notify(f"Whisper model download failed: {model_id}")
 
     def _toggle_postprocess(self, sender):
         new_state = not self.config.get("postprocess", True)
@@ -603,7 +613,10 @@ class LocalWhisperApp(rumps.App):
         self.engine.update_config({key: value})
         save_config({key: value})
 
-        if key == "language":
+        if key == "launch_at_login":
+            self._sync_launch_at_login()
+
+        elif key == "language":
             name = next(
                 (n for c, n in SPEECH_LANGUAGES if c == value),
                 value,
@@ -669,16 +682,33 @@ class LocalWhisperApp(rumps.App):
             self._current_backend = value
             self._model_menu.title = self._model_menu_title()
 
-        elif key == "ollama_model":
+        elif key == "ollama_model" or (
+            key == "openai_model" and self._current_backend == "openai"
+        ):
             self._current_model = value
             self._model_menu.title = self._model_menu_title()
 
-        elif key == "openai_model":
-            if self._current_backend == "openai":
-                self._current_model = value
-                self._model_menu.title = self._model_menu_title()
-
         log.info("setting changed: %s = %s", key, value)
+
+    def _sync_launch_at_login(self):
+        enabled = self.config.get("launch_at_login", True)
+        if sync_login_item(enabled):
+            log.info("launch at login: %s", "on" if enabled else "off")
+            return
+        log.info("launch at login sync skipped")
+
+    def _ensure_whisper_model(self):
+        from .preflight import is_model_cached, notify
+
+        model_id = self.config.get("whisper_model", "")
+        if is_model_cached(model_id):
+            return
+        notify(f"Downloading Whisper model: {model_id}")
+        threading.Thread(
+            target=self._download_whisper_model,
+            args=(model_id,),
+            daemon=True,
+        ).start()
 
     def _do_openai_login(self):
         def do_login():
@@ -832,10 +862,7 @@ class LocalWhisperApp(rumps.App):
 
 
 def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(name)s %(levelname)s: %(message)s",
-    )
+    configure_logging()
 
     from .preflight import run_checks
 
