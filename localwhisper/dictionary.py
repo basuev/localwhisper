@@ -57,12 +57,26 @@ class UserDictionary:
         matcher = difflib.SequenceMatcher(None, original_words, corrected_words)
         replacements = []
         for op, i1, i2, j1, j2 in matcher.get_opcodes():
-            if op == "replace" and (i2 - i1) == (j2 - j1):
-                for orig, corr in zip(
-                    original_words[i1:i2], corrected_words[j1:j2], strict=True
-                ):
-                    if orig != corr:
-                        replacements.append((orig, corr))
+            if op != "replace":
+                continue
+
+            original_chunk = original_words[i1:i2]
+            corrected_chunk = corrected_words[j1:j2]
+            if len(original_chunk) == len(corrected_chunk):
+                replacements.extend(
+                    (orig, corr)
+                    for orig, corr in zip(
+                        original_chunk,
+                        corrected_chunk,
+                        strict=True,
+                    )
+                    if orig != corr
+                )
+                continue
+
+            replacements.append(
+                (" ".join(original_chunk), " ".join(corrected_chunk))
+            )
         return replacements
 
     @staticmethod

@@ -68,19 +68,19 @@ class Transcriber:
 
         with self._lock:
             self._ensure_loaded()
+            silence = np.zeros(16000, dtype=np.float32)
+            try:
+                self._mlx_whisper.transcribe(
+                    silence,
+                    path_or_hf_repo=self.model_name,
+                    language=self.language,
+                )
+                log.info("whisper model preloaded: %s", self.model_name)
+            except Exception:
+                log.warning("failed to preload whisper model", exc_info=True)
 
-        silence = np.zeros(16000, dtype=np.float32)
-        try:
-            self._mlx_whisper.transcribe(
-                silence,
-                path_or_hf_repo=self.model_name,
-                language=self.language,
-            )
-            log.info("whisper model preloaded: %s", self.model_name)
-        except Exception:
-            log.warning("failed to preload whisper model", exc_info=True)
+            self._last_used = time.time()
 
-        self._last_used = time.time()
         self._schedule_unload()
 
     def _unload(self):
@@ -105,12 +105,12 @@ class Transcriber:
         with self._lock:
             self._ensure_loaded()
             self._last_used = time.time()
+            result = self._mlx_whisper.transcribe(
+                audio,
+                path_or_hf_repo=self.model_name,
+                language=self.language,
+            )
 
-        result = self._mlx_whisper.transcribe(
-            audio,
-            path_or_hf_repo=self.model_name,
-            language=self.language,
-        )
         text = result.get("text", "").strip()
 
         self._schedule_unload()

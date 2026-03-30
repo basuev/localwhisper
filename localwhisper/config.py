@@ -30,6 +30,9 @@ DEFAULT_CONFIG = {
     "blob_theme": "dark",
     "feedback_double_click_timeout": 300,
     "dictionary_similarity_threshold": 0.4,
+    "max_corrections": 50,
+    "max_fewshot_chars": 2000,
+    "max_fewshot_examples": 5,
 }
 
 CONFIG_DIR = Path.home() / ".config" / "localwhisper"

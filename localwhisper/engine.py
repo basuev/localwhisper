@@ -4,6 +4,7 @@ from collections import defaultdict
 
 import numpy as np
 
+from .corrections import CorrectionsStore
 from .dictionary import UserDictionary
 from .events import (
     Cancelled,
@@ -51,6 +52,10 @@ class LocalWhisperEngine:
         self._transcriber = Transcriber(config)
         self._postprocessor = PostProcessor(config)
         self._dictionary = UserDictionary()
+        self._corrections = CorrectionsStore(
+            max_entries=config.get("max_corrections", 50)
+        )
+        self._postprocessor.set_corrections_store(self._corrections)
         self._last_inserted_text = None
 
     @property
@@ -342,27 +347,23 @@ class LocalWhisperEngine:
                 model = self._config["ollama_model"]
             self._postprocessor.switch(backend, model)
 
-    def feedback(self, clipboard_text: str) -> FeedbackResult | None:
-        if not self._last_inserted_text:
+    def feedback(
+        self, original_text: str, corrected_text: str
+    ) -> FeedbackResult | None:
+        if original_text == corrected_text:
             return None
 
-        threshold = self._config.get("dictionary_similarity_threshold", 0.4)
-        if not UserDictionary.is_similar(
-            self._last_inserted_text, clipboard_text, threshold
-        ):
-            return None
-
-        replacements = UserDictionary.diff(self._last_inserted_text, clipboard_text)
         added = []
         conflicts = []
-        for from_word, to_word in replacements:
-            old_to = self._dictionary.add(from_word, to_word)
-            if old_to is not None:
-                conflicts.append((from_word, old_to, to_word))
-            else:
+        for from_word, to_word in UserDictionary.diff(original_text, corrected_text):
+            if (old_to := self._dictionary.add(from_word, to_word)) is None:
                 added.append((from_word, to_word))
+            else:
+                conflicts.append((from_word, old_to, to_word))
 
-        return FeedbackResult(added=added, conflicts=conflicts)
+        self._corrections.add(original_text, corrected_text)
+
+        return FeedbackResult(added=added, conflicts=conflicts, correction_saved=True)
 
     def shutdown(self) -> None:
         self.cancel()

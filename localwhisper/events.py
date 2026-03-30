@@ -58,6 +58,7 @@ class Cancelled:
 class FeedbackResult:
     added: list[tuple[str, str]]
     conflicts: list[tuple[str, str, str]]
+    correction_saved: bool = False
 
 
 @dataclass

@@ -95,6 +95,8 @@ class LocalWhisperApp(rumps.App):
 
         self.config = load_config()
         self._recording_source_app = None
+        self._feedback_source_app = None
+        self._feedback_window = None
         self.clipboard = ClipboardManager()
         self._settings_window = None
         self._general_tab = None
@@ -179,6 +181,10 @@ class LocalWhisperApp(rumps.App):
         )
         self._theme_item.state = 1 if current_theme == "light" else 0
 
+        self._correct_last_item = rumps.MenuItem(
+            "Correct Last...", callback=self._on_feedback_menu
+        )
+
         self._preferences_item = rumps.MenuItem(
             "Preferences...", callback=self._on_preferences, key=","
         )
@@ -193,6 +199,7 @@ class LocalWhisperApp(rumps.App):
             self._postprocess_item,
             self._streaming_item,
             None,
+            self._correct_last_item,
             self._preferences_item,
             None,
             quit_item,
@@ -701,7 +708,10 @@ class LocalWhisperApp(rumps.App):
 
     def _on_feedback(self):
         callAfter(self._show_feedback_pulse)
-        callAfter(self._handle_feedback)
+        callAfter(self._open_feedback_window)
+
+    def _on_feedback_menu(self, _):
+        self._open_feedback_window()
 
     def _show_feedback_pulse(self):
         play_sound(
@@ -710,12 +720,25 @@ class LocalWhisperApp(rumps.App):
         self._overlay.show()
         self._overlay.set_mode("pulse")
 
-    def _handle_feedback(self):
-        clipboard_text = self.clipboard._get_clipboard()
-        if not clipboard_text:
+    def _open_feedback_window(self):
+        if self.engine._last_inserted_text is None:
             return
 
-        result = self.engine.feedback(clipboard_text)
+        self._feedback_source_app = focus.capture()
+
+        if self._feedback_window is None:
+            from .feedback_window import FeedbackWindow
+
+            self._feedback_window = FeedbackWindow.shared()
+
+        self._feedback_window.show(
+            self.engine._last_inserted_text,
+            on_confirm=self._on_feedback_confirm,
+            on_cancel=self._on_feedback_cancel,
+        )
+
+    def _on_feedback_confirm(self, original_text, corrected_text):
+        result = self.engine.feedback(original_text, corrected_text)
         if result is None:
             return
 
@@ -732,13 +755,25 @@ class LocalWhisperApp(rumps.App):
             if response == 1:
                 self.engine._dictionary.resolve_conflict(from_word, new_to)
 
+        pb = AppKit.NSPasteboard.generalPasteboard()
+        pb.clearContents()
+        pb.setString_forType_(corrected_text, AppKit.NSPasteboardTypeString)
+
+        parts = []
         if result.added:
             words = ", ".join(f"'{f}' -> '{t}'" for f, t in result.added)
-            rumps.notification(
-                title="dictionary updated",
-                subtitle="",
-                message=words,
-            )
+            parts.append(words)
+        parts.append("corrected text copied to clipboard")
+        rumps.notification(
+            title="feedback saved",
+            subtitle="",
+            message="; ".join(parts),
+        )
+
+        focus.restore(self._feedback_source_app)
+
+    def _on_feedback_cancel(self):
+        focus.restore(self._feedback_source_app)
 
     def _on_cancel(self) -> bool:
         if self.engine.state == "idle":

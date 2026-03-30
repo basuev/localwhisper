@@ -4,6 +4,7 @@ import logging
 import requests
 
 from localwhisper import oauth
+from localwhisper.corrections import CorrectionsStore
 
 log = logging.getLogger(__name__)
 
@@ -36,16 +37,56 @@ class PostProcessor:
 
         self.openai_model = config.get("openai_model", "gpt-5.4")
 
+        self._corrections_store: CorrectionsStore | None = None
+        self._max_fewshot_chars = config.get("max_fewshot_chars", 2000)
+        self._max_fewshot_examples = config.get("max_fewshot_examples", 5)
+
     def set_translate_to(self, language: str | None):
         self.translate_to = language
 
-    def _build_prompt(self) -> str:
-        if not self.translate_to:
-            return POSTPROCESS_PROMPT
-        return (
-            POSTPROCESS_PROMPT
-            + f"\nAlso translate the result into {self.translate_to}."
+    def set_corrections_store(self, store: CorrectionsStore) -> None:
+        self._corrections_store = store
+
+    def _build_prompt(self, input_text: str = "") -> str:
+        prompt = POSTPROCESS_PROMPT
+        if self.translate_to:
+            prompt += f"\nAlso translate the result into {self.translate_to}."
+        if fewshot_section := self._build_fewshot_section(input_text):
+            prompt += fewshot_section
+        return prompt
+
+    def _build_fewshot_section(self, input_text: str) -> str:
+        if not self._corrections_store or not input_text:
+            return ""
+
+        examples = self._corrections_store.get_relevant(
+            input_text, n=self._max_fewshot_examples
         )
+        if not examples:
+            return ""
+
+        header = (
+            "\n\nHere are examples of how the user previously corrected "
+            "the output. Learn from these patterns:\n"
+        )
+        remaining = self._max_fewshot_chars - len(header)
+        if remaining <= 0:
+            return ""
+
+        parts = []
+        for i, entry in enumerate(examples, 1):
+            block = (
+                f"\nExample {i}:\nInput: {entry.original}\nOutput: {entry.corrected}\n"
+            )
+            if len(block) > remaining:
+                break
+            parts.append(block)
+            remaining -= len(block)
+
+        if not parts:
+            return ""
+
+        return header + "".join(parts)
 
     def switch(self, backend: str, model: str):
         self.backend = backend
@@ -69,7 +110,7 @@ class PostProcessor:
                 json={
                     "model": self.ollama_model,
                     "messages": [
-                        {"role": "system", "content": self._build_prompt()},
+                        {"role": "system", "content": self._build_prompt(text)},
                         {"role": "user", "content": text},
                     ],
                     "stream": False,
@@ -106,7 +147,7 @@ class PostProcessor:
                 headers=headers,
                 json={
                     "model": self.openai_model,
-                    "instructions": self._build_prompt(),
+                    "instructions": self._build_prompt(text),
                     "input": [{"role": "user", "content": text}],
                     "store": False,
                     "stream": True,

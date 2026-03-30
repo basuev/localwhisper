@@ -142,6 +142,27 @@ def test_resolve_conflict(tmp_path):
     assert d.entries == [("деплой", "деплою")]
 
 
+def test_diff_unequal_length_replace():
+    from localwhisper.dictionary import UserDictionary
+
+    replacements = UserDictionary.diff(
+        "кубернетис кластер готов к деплою",
+        "k8s готов к деплою",
+    )
+    assert ("кубернетис кластер", "k8s") in replacements
+
+
+def test_diff_mixed_equal_and_unequal():
+    from localwhisper.dictionary import UserDictionary
+
+    replacements = UserDictionary.diff(
+        "деплой на кубернетис кластер завтра",
+        "deploy на k8s завтра",
+    )
+    assert ("деплой", "deploy") in replacements
+    assert ("кубернетис кластер", "k8s") in replacements
+
+
 def test_similarity_check():
     from localwhisper.dictionary import UserDictionary
 
