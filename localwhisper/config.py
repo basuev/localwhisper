@@ -4,6 +4,8 @@ from pathlib import Path
 
 import yaml
 
+from .paths import CONFIG_PATH, config_example_path
+
 DEFAULT_CONFIG = {
     "whisper_model": "mlx-community/whisper-large-v3-mlx",
     "language": "ru",
@@ -24,6 +26,7 @@ DEFAULT_CONFIG = {
     "postprocessor": "ollama",
     "openai_model": "gpt-5.4",
     "translate_to": None,
+    "launch_at_login": True,
     "postprocess": True,
     "streaming": True,
     "chunk_duration": 5.0,
@@ -34,10 +37,6 @@ DEFAULT_CONFIG = {
     "max_fewshot_chars": 2000,
     "max_fewshot_examples": 5,
 }
-
-CONFIG_DIR = Path.home() / ".config" / "localwhisper"
-CONFIG_PATH = CONFIG_DIR / "config.yaml"
-
 
 def _write_config(config_path: Path, data: dict) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -55,8 +54,8 @@ def load_config(config_path: Path | None = None) -> dict:
     config_path = config_path or CONFIG_PATH
 
     if not config_path.exists():
-        example = Path(__file__).parent.parent / "config.example.yaml"
-        if example.exists():
+        example = config_example_path()
+        if example is not None and example.exists():
             config_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(example, config_path)
         else:

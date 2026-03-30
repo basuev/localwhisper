@@ -8,10 +8,11 @@ import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
+
+from .paths import CONFIG_DIR
 
 log = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 SCOPES = "openid profile email offline_access"
 CALLBACK_PORT = 1455
 REDIRECT_URI = f"http://localhost:{CALLBACK_PORT}/auth/callback"
-TOKEN_PATH = Path.home() / ".config" / "localwhisper" / "auth.json"
+TOKEN_PATH = CONFIG_DIR / "auth.json"
 
 _refresh_lock = threading.Lock()
 

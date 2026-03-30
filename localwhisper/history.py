@@ -2,7 +2,9 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-HISTORY_DIR = Path.home() / ".local" / "share" / "localwhisper"
+from .paths import DATA_DIR
+
+HISTORY_DIR = DATA_DIR
 HISTORY_PATH = HISTORY_DIR / "history.jsonl"
 
 
