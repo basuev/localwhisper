@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LocalWhisper - Private Speech-to-Text for Apple Silicon</title>
+  <meta name="description" content="Local speech-to-text macOS app for Apple Silicon. MLX Whisper transcription, LLM post-processing, one-hotkey workflow. Private, fast, open source.">
+  <meta property="og:title" content="LocalWhisper">
+  <meta property="og:description" content="Private speech-to-text for Apple Silicon">
+  <meta property="og:type" content="website">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#FAFAF8;--bg-alt:#F3F2EF;--surface:#EAEAE6;
+      --border:#D8D7D3;--text:#1A1A18;--text-2:#6B6A66;--text-3:#9C9B97;
+      --blob:#2A2A28;--blob-spot:#5C5C58;
+      --term-bg:#1E1E1C;--term-text:#D4D4CF;--term-prompt:#8A8A85;
+    }
+    html{scroll-behavior:smooth}
+    body{
+      font-family:'Plus Jakarta Sans',system-ui,sans-serif;
+      color:var(--text);background:var(--bg);
+      line-height:1.6;-webkit-font-smoothing:antialiased;
+    }
+
+    .container{max-width:1080px;margin:0 auto;padding:0 2rem}
+
+    .hero{
+      min-height:100vh;display:flex;align-items:center;justify-content:center;
+      text-align:center;position:relative;overflow:hidden;
+    }
+    .hero::before{
+      content:'';position:absolute;inset:0;
+      background:radial-gradient(ellipse 80% 60% at 50% 40%,var(--bg-alt),transparent);
+      pointer-events:none;
+    }
+    .hero-content{position:relative;z-index:1}
+    .hero-content{animation:fadeUp .8s ease-out both}
+
+    .blob-wrap{
+      width:400px;height:400px;margin:0 auto -2rem;
+    }
+    .blob-canvas{display:block}
+
+    @keyframes fadeUp{
+      from{opacity:0;transform:translateY(24px)}
+      to{opacity:1;transform:translateY(0)}
+    }
+
+    .hero h1{
+      font-family:'Satoshi',sans-serif;font-style:italic;
+      font-size:clamp(2.8rem,6vw,4.5rem);font-weight:700;
+      letter-spacing:-0.04em;line-height:1.1;margin-bottom:.75rem;font-style:normal;
+    }
+    .tagline{
+      font-size:clamp(1.05rem,2vw,1.25rem);color:var(--text-2);
+      max-width:400px;margin:0 auto 2.5rem;letter-spacing:0.01em;
+    }
+    .cta{
+      display:inline-block;padding:.85rem 2.2rem;
+      background:var(--blob);color:var(--bg);
+      text-decoration:none;border-radius:8px;
+      font-weight:500;font-size:.95rem;letter-spacing:0.01em;
+      transition:background .2s ease;
+    }
+    .cta:hover{background:var(--blob-spot)}
+
+    .features{background:var(--bg-alt);padding:6rem 0}
+    .features h2{
+      font-family:'Satoshi',sans-serif;
+      font-size:clamp(1.6rem,3vw,2.2rem);font-weight:700;
+      text-align:center;margin-bottom:3.5rem;letter-spacing:-0.02em;
+    }
+    .feature-grid{
+      display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;
+    }
+    .feature-card{
+      background:var(--bg);border:1px solid var(--border);
+      border-radius:12px;padding:2rem;
+    }
+    .feature-icon{
+      width:40px;height:40px;margin-bottom:1.25rem;
+      display:flex;align-items:center;justify-content:center;
+      color:var(--blob);
+    }
+
+    .icon-shield{
+      width:24px;height:28px;position:relative;
+      background:var(--blob);
+      clip-path:polygon(50% 0%,100% 14%,100% 58%,50% 100%,0% 58%,0% 14%);
+    }
+    .icon-chip{
+      width:22px;height:22px;border:2.5px solid var(--blob);border-radius:4px;
+      position:relative;
+    }
+    .icon-chip::before,.icon-chip::after{
+      content:'';position:absolute;background:var(--blob);
+    }
+    .icon-chip::before{
+      width:4px;height:2.5px;
+      top:50%;left:-6px;transform:translateY(-50%);
+      box-shadow:0 -6px 0 var(--blob),0 6px 0 var(--blob),28px 0 0 var(--blob),28px -6px 0 var(--blob),28px 6px 0 var(--blob);
+    }
+    .icon-chip::after{
+      width:2.5px;height:4px;
+      left:50%;top:-6px;transform:translateX(-50%);
+      box-shadow:0 28px 0 var(--blob),-6px 0 0 var(--blob),6px 0 0 var(--blob),-6px 28px 0 var(--blob),6px 28px 0 var(--blob);
+    }
+
+    .icon-key{
+      width:32px;height:24px;border:2.5px solid var(--blob);border-radius:6px;
+      display:flex;align-items:center;justify-content:center;
+      font-family:'JetBrains Mono',monospace;font-size:9px;
+      font-weight:500;color:var(--blob);letter-spacing:0;
+    }
+
+    .icon-globe{
+      width:24px;height:24px;border:2px solid var(--blob);border-radius:50%;
+      position:relative;overflow:hidden;
+    }
+    .icon-globe::before{
+      content:'';position:absolute;
+      width:14px;height:22px;border:2px solid var(--blob);border-radius:50%;
+      top:50%;left:50%;transform:translate(-50%,-50%);
+    }
+    .icon-globe::after{
+      content:'';position:absolute;
+      width:100%;height:0;border-top:2px solid var(--blob);
+      top:50%;left:0;transform:translateY(-50%);
+    }
+
+    .icon-sparkle{
+      width:24px;height:24px;position:relative;
+      background:var(--blob);
+      clip-path:polygon(50% 0%,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0% 50%,38% 38%);
+    }
+
+    .icon-wave{
+      display:flex;align-items:end;gap:3px;height:24px;
+    }
+    .icon-wave span{
+      width:4px;background:var(--blob);border-radius:2px;
+    }
+    .icon-wave span:nth-child(1){height:10px}
+    .icon-wave span:nth-child(2){height:20px}
+    .icon-wave span:nth-child(3){height:14px}
+    .icon-wave span:nth-child(4){height:18px}
+    .icon-wave span:nth-child(5){height:8px}
+
+    .feature-card h3{
+      font-family:'Plus Jakarta Sans',sans-serif;
+      font-size:1.05rem;font-weight:600;margin-bottom:.5rem;
+      letter-spacing:-0.01em;
+    }
+    .feature-card p{
+      font-size:.9rem;color:var(--text-2);line-height:1.55;
+    }
+
+
+    .showcase{padding:6rem 0}
+    .showcase h2{
+      font-family:'Satoshi',sans-serif;
+      font-size:clamp(1.6rem,3vw,2.2rem);font-weight:700;
+      text-align:center;margin-bottom:3.5rem;letter-spacing:-0.02em;
+    }
+    .demo-wrap{
+      max-width:640px;margin:0 auto;position:relative;
+    }
+    .demo-window{
+      border-radius:12px;overflow:hidden;
+      border:1px solid var(--border);
+      background:var(--bg);
+    }
+    .demo-titlebar{
+      background:var(--surface);padding:10px 14px;
+      display:flex;align-items:center;gap:6px;
+      border-bottom:1px solid var(--border);
+    }
+    .demo-dot{width:8px;height:8px;border-radius:50%}
+    .demo-dot:nth-child(1){background:#EF6B6B}
+    .demo-dot:nth-child(2){background:#F0C24A}
+    .demo-dot:nth-child(3){background:#6BCD5E}
+    .demo-titlebar-text{
+      flex:1;text-align:center;font-size:.75rem;color:var(--text-3);
+      font-family:'JetBrains Mono',monospace;
+    }
+    .demo-body{
+      padding:1.25rem 1.5rem;min-height:200px;position:relative;
+      font-family:'JetBrains Mono',monospace;font-size:.8rem;
+      color:var(--text);line-height:1.7;
+      background:#FFFFFF;
+    }
+    .demo-hr{
+      border:none;border-top:1px solid var(--border);margin:.6rem 0;
+    }
+    .demo-label{
+      font-size:.7rem;color:var(--text-3);margin-bottom:.3rem;
+    }
+    .demo-cc-header{
+      color:var(--text-3);font-size:.75rem;margin-bottom:.5rem;
+    }
+    .demo-input-row{
+      padding-left:1.2em;text-indent:-1.2em;
+      word-break:break-word;
+    }
+    .demo-input-caret{color:#D97706;font-weight:700;margin-right:.3em}
+    .demo-cursor{
+      display:inline-block;width:7px;height:1.1em;
+      background:var(--text);vertical-align:text-bottom;
+      animation:blink 1s step-end infinite;opacity:.6;
+    }
+    @keyframes blink{0%,100%{opacity:.6}50%{opacity:0}}
+    .demo-status{
+      position:absolute;bottom:0;left:0;right:0;
+      padding:6px 1.5rem;font-size:.65rem;color:var(--text-3);
+      border-top:1px solid var(--border);
+      display:flex;justify-content:space-between;
+    }
+
+    .demo-steps{
+      display:flex;justify-content:center;gap:2rem;margin-top:2.5rem;
+    }
+    .demo-step{
+      display:flex;align-items:center;gap:.6rem;
+      font-size:.85rem;color:var(--text-3);
+    }
+    .demo-step-num{
+      width:24px;height:24px;border-radius:50%;
+      background:var(--surface);border:1px solid var(--border);
+      display:flex;align-items:center;justify-content:center;
+      font-size:.75rem;font-weight:600;color:var(--text-2);
+      transition:all .4s ease;
+    }
+    .demo-step{transition:color .4s ease}
+    .demo-step.active .demo-step-num{
+      background:var(--blob);color:var(--bg);border-color:var(--blob);
+    }
+    .demo-step.active{color:var(--text)}
+
+    .demo-key{
+      display:inline-block;padding:3px 10px;
+      border:1.5px solid var(--border);border-radius:5px;
+      font-family:'JetBrains Mono',monospace;font-size:.8rem;
+      background:var(--bg);color:var(--text-2);
+      box-shadow:0 1px 0 var(--border);
+      transition:all .3s ease;
+    }
+    .demo-key.pressed{
+      background:var(--blob);color:var(--bg);
+      border-color:var(--blob);box-shadow:none;
+      transform:translateY(1px);
+    }
+
+    .demo-blob-mini{
+      width:32px;height:32px;margin:0 auto;
+    }
+
+    .installation{padding:6rem 0;text-align:center}
+    .installation h2{
+      font-family:'Satoshi',sans-serif;
+      font-size:clamp(1.6rem,3vw,2.2rem);font-weight:700;
+      margin-bottom:1rem;letter-spacing:-0.02em;
+    }
+    .install-note{color:var(--text-2);font-size:.95rem;margin-bottom:2rem}
+
+    .terminal{
+      max-width:620px;margin:0 auto;border-radius:12px;overflow:hidden;
+      text-align:left;position:relative;
+    }
+    .terminal-header{
+      background:#2A2A28;padding:.75rem 1rem;
+      display:flex;align-items:center;gap:6px;
+    }
+    .terminal-dot{
+      width:8px;height:8px;border-radius:50%;background:var(--blob-spot);
+    }
+    .copy-btn{
+      position:absolute;top:.6rem;right:.75rem;
+      background:transparent;border:none;cursor:pointer;
+      padding:6px;border-radius:4px;transition:background .2s;
+      color:var(--term-prompt);
+    }
+    .copy-btn:hover{background:rgba(255,255,255,.08)}
+    .copy-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+    .terminal-body{
+      background:var(--term-bg);padding:1.25rem 1.5rem;margin:0;
+      font-family:'JetBrains Mono',monospace;font-size:.85rem;
+      line-height:2;overflow-x:auto;
+    }
+    .terminal-body .prompt{color:var(--term-prompt);user-select:none}
+    .terminal-body .cmd{color:var(--term-text)}
+    .install-footer{color:var(--text-3);font-size:.85rem;margin-top:1.5rem}
+
+    footer{
+      border-top:1px solid var(--border);padding:2rem 0;
+    }
+    .footer-inner{
+      display:flex;justify-content:space-between;align-items:center;
+      font-size:.85rem;color:var(--text-3);
+    }
+    .footer-inner a{
+      color:var(--text-3);text-decoration:none;
+      transition:color .2s;
+    }
+    .footer-inner a:hover{color:var(--text)}
+
+    @media(max-width:1024px){
+      .feature-grid{grid-template-columns:repeat(2,1fr)}
+    }
+    @media(max-width:768px){
+      .feature-grid{grid-template-columns:1fr}
+      .blob-wrap{width:300px;height:300px;margin-bottom:1rem}
+      .blob-canvas{width:300px!important;height:300px!important}
+      .hero{min-height:90vh}
+      .features,.installation{padding:4rem 0}
+    }
+    @media(prefers-reduced-motion:reduce){
+      *,*::before,*::after{
+        animation-duration:0.01ms !important;
+        animation-iteration-count:1 !important;
+        transition-duration:0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <section class="hero">
+    <div class="hero-content">
+      <div class="blob-wrap">
+        <canvas class="blob-canvas" width="800" height="800" style="width:400px;height:400px"></canvas>
+      </div>
+      <h1>localwhisper</h1>
+      <p class="tagline">Private speech-to-text for Apple Silicon</p>
+      <a href="https://github.com/basuev/localwhisper" class="cta">View on GitHub</a>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="container">
+      <h2>Features</h2>
+      <div class="feature-grid">
+
+        <div class="feature-card">
+          <div class="feature-icon"><div class="icon-shield"></div></div>
+          <h3>Private by design</h3>
+          <p>All transcription runs locally on your Mac. Your voice data never leaves your device.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon"><div class="icon-chip"></div></div>
+          <h3>Apple Silicon native</h3>
+          <p>Built on MLX Whisper, optimized for M-series chips. Fast, efficient, no GPU bottleneck.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon"><div class="icon-key">opt</div></div>
+          <h3>One-hotkey workflow</h3>
+          <p>Press Option to record, release to transcribe. The result pastes into your active app automatically.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon"><div class="icon-globe"></div></div>
+          <h3>10+ languages</h3>
+          <p>Russian, English, German, French, Spanish, Japanese, Chinese, Korean, Ukrainian, Polish.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon"><div class="icon-sparkle"></div></div>
+          <h3>LLM post-processing</h3>
+          <p>Automatic punctuation and grammar correction via Ollama locally or OpenAI in the cloud.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">
+            <div class="icon-wave">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <h3>Streaming transcription</h3>
+          <p>Processes audio in 5-second chunks during recording for faster results on long dictations.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <section class="showcase">
+    <div class="container">
+      <h2>How it works</h2>
+      <div class="demo-wrap">
+        <div class="demo-window">
+          <div class="demo-titlebar">
+            <span class="demo-dot"></span>
+            <span class="demo-dot"></span>
+            <span class="demo-dot"></span>
+            <span class="demo-titlebar-text">claude</span>
+            <span style="width:42px"></span>
+          </div>
+          <div class="demo-body">
+            <div class="demo-cc-header">~/projects/myapp</div>
+            <hr class="demo-hr">
+            <div class="demo-input-row">
+              <span class="demo-input-caret">&gt;</span>
+              <span id="demo-text"></span><span class="demo-cursor"></span>
+            </div>
+            <canvas id="demo-blob" width="320" height="320" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:160px;height:160px;opacity:0;transition:opacity .6s ease"></canvas>
+            <div class="demo-status">
+              <span>Claude Code</span>
+              <span>Opus 4 &middot; Auto</span>
+            </div>
+          </div>
+        </div>
+        <div class="demo-steps">
+          <div class="demo-step" id="step-1">
+            <span class="demo-step-num">1</span>
+            <span>Press <span class="demo-key" id="demo-key">opt</span></span>
+          </div>
+          <div class="demo-step" id="step-2">
+            <span class="demo-step-num">2</span>
+            <span>Recording</span>
+          </div>
+          <div class="demo-step" id="step-3">
+            <span class="demo-step-num">3</span>
+            <span>Processing</span>
+          </div>
+          <div class="demo-step" id="step-4">
+            <span class="demo-step-num">4</span>
+            <span>Auto-paste</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="installation">
+    <div class="container">
+      <h2>Installation</h2>
+      <p class="install-note">Requires macOS on Apple Silicon (M1+), Python 3.11+, and uv.</p>
+      <div class="terminal">
+        <div class="terminal-header">
+          <span class="terminal-dot"></span>
+          <span class="terminal-dot"></span>
+          <span class="terminal-dot"></span>
+          <button class="copy-btn" aria-label="Copy commands">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+        </div>
+        <pre class="terminal-body"><span class="prompt">$ </span><span class="cmd">git clone https://github.com/basuev/localwhisper.git</span>
+<span class="prompt">$ </span><span class="cmd">cd localwhisper</span>
+<span class="prompt">$ </span><span class="cmd">bash scripts/install.sh</span></pre>
+      </div>
+      <p class="install-footer">After installation, grant Accessibility permission in System Settings.</p>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container footer-inner">
+      <span>localwhisper</span>
+      <a href="https://github.com/basuev/localwhisper">GitHub</a>
+    </div>
+  </footer>
+
+  <script>
+    (function(){
+      var canvas=document.querySelector('.blob-canvas');
+      if(!canvas)return;
+      var ctx=canvas.getContext('2d');
+      var W=canvas.width,H=canvas.height;
+      var cx=W/2,cy=H/2,R=180,N=64;
+      function blobPoints(t){
+        var pts=[];
+        for(var i=0;i<N;i++){
+          var theta=2*Math.PI*i/N;
+          var d=Math.sin(3*theta+t*2.0)*0.12
+            +Math.sin(5*theta-t*1.5)*0.08
+            +Math.sin(7*theta+t*0.9)*0.05;
+          var r=R*(1.0+d);
+          pts.push([cx+r*Math.cos(theta),cy+r*Math.sin(theta)]);
+        }
+        return pts;
+      }
+      function drawBlob(pts){
+        var n=pts.length;
+        ctx.clearRect(0,0,W,H);
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0],pts[0][1]);
+        for(var i=0;i<n;i++){
+          var p0=pts[(i-1+n)%n],p1=pts[i],p2=pts[(i+1)%n],p3=pts[(i+2)%n];
+          var cp1x=p1[0]+(p2[0]-p0[0])/6,cp1y=p1[1]+(p2[1]-p0[1])/6;
+          var cp2x=p2[0]-(p3[0]-p1[0])/6,cp2y=p2[1]-(p3[1]-p1[1])/6;
+          ctx.bezierCurveTo(cp1x,cp1y,cp2x,cp2y,p2[0],p2[1]);
+        }
+        ctx.closePath();
+        var grd=ctx.createRadialGradient(cx*0.75,cy*0.7,0,cx,cy,R*1.1);
+        grd.addColorStop(0,'#5C5C58');
+        grd.addColorStop(1,'#2A2A28');
+        ctx.fillStyle=grd;
+        ctx.fill();
+      }
+      var start=null;
+      function tick(ts){
+        if(!start)start=ts;
+        drawBlob(blobPoints((ts-start)/1000));
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    })();
+    (function(){
+      var textEl=document.getElementById('demo-text');
+      var blobEl=document.getElementById('demo-blob');
+      var keyEl=document.getElementById('demo-key');
+      var steps=[document.getElementById('step-1'),document.getElementById('step-2'),document.getElementById('step-3'),document.getElementById('step-4')];
+      if(!textEl||!blobEl)return;
+
+      var bCtx=blobEl.getContext('2d');
+      var phrase='Refactor the authentication module to use JWT tokens instead of sessions. Update all related tests, fix the refresh token flow in the middleware, and make sure the OAuth callback handles edge cases like expired state parameters and concurrent login attempts from multiple devices.';
+      var CYCLE=11000;
+      var REC_R=72;
+      var IDLE_R=40;
+
+      function setActive(idx){
+        steps.forEach(function(s,i){
+          if(i===idx)s.classList.add('active');
+          else s.classList.remove('active');
+        });
+      }
+
+      function drawMiniBlob(t,radius,morph,shimmer){
+        var pts=[],N=48,cx=160,cy=160;
+        for(var i=0;i<N;i++){
+          var th=2*Math.PI*i/N;
+          var d=Math.sin(3*th+t*2)*0.12+Math.sin(5*th-t*1.5)*0.08+Math.sin(7*th+t*0.9)*0.05;
+          var r=radius*(1+d*morph);
+          pts.push([cx+r*Math.cos(th),cy+r*Math.sin(th)]);
+        }
+        bCtx.clearRect(0,0,320,320);
+        bCtx.save();
+        bCtx.beginPath();
+        bCtx.moveTo(pts[0][0],pts[0][1]);
+        for(var i=0;i<N;i++){
+          var p0=pts[(i-1+N)%N],p1=pts[i],p2=pts[(i+1)%N],p3=pts[(i+2)%N];
+          bCtx.bezierCurveTo(
+            p1[0]+(p2[0]-p0[0])/6,p1[1]+(p2[1]-p0[1])/6,
+            p2[0]-(p3[0]-p1[0])/6,p2[1]-(p3[1]-p1[1])/6,
+            p2[0],p2[1]);
+        }
+        bCtx.closePath();
+        var g=bCtx.createRadialGradient(cx*0.75,cy*0.7,0,cx,cy,radius*1.1);
+        g.addColorStop(0,'#5C5C58');g.addColorStop(1,'#2A2A28');
+        bCtx.fillStyle=g;bCtx.fill();
+        if(shimmer){
+          bCtx.clip();
+          var sdx=0.5*Math.cos(t*2+Math.sin(t*0.9)*0.4);
+          var sdy=0.5*Math.sin(t*1.5+Math.cos(t*0.9)*0.4);
+          var sx=cx+radius*sdx,sy=cy+radius*sdy;
+          var sa=0.35+0.1*Math.sin(t*2);
+          var sg=bCtx.createRadialGradient(sx,sy,0,sx,sy,radius*1.5);
+          sg.addColorStop(0,'rgba(140,140,135,'+sa+')');
+          sg.addColorStop(1,'rgba(140,140,135,0)');
+          bCtx.fillStyle=sg;bCtx.fill();
+        }
+        bCtx.restore();
+      }
+
+      function lerp(a,b,p){return a+(b-a)*p}
+      function ease(p){return p<1?1-Math.pow(1-p,3):1}
+
+      var animStart=null;
+      var prevPhase=-1;
+      function tick(ts){
+        if(!animStart)animStart=ts;
+        var elapsed=(ts-animStart)%CYCLE;
+        var t=(ts-animStart)/1000;
+        var phase;
+
+        if(elapsed<500){
+          phase=0;
+          keyEl.classList.add('pressed');
+          var fade=ease(elapsed/500);
+          blobEl.style.opacity=String(fade);
+          drawMiniBlob(t,lerp(IDLE_R,REC_R,fade),fade,false);
+          textEl.textContent='';
+        }else if(elapsed<3800){
+          phase=1;
+          keyEl.classList.add('pressed');
+          blobEl.style.opacity='1';
+          var pulse=1+Math.sin(elapsed/200)*0.06;
+          drawMiniBlob(t,REC_R*pulse,1,false);
+          textEl.textContent='';
+        }else if(elapsed<4300){
+          phase=2;
+          keyEl.classList.remove('pressed');
+          var shrink=ease((elapsed-3800)/500);
+          var curR=lerp(REC_R,IDLE_R,shrink);
+          blobEl.style.opacity='1';
+          drawMiniBlob(t,curR,lerp(1,0.5,shrink),true);
+          textEl.textContent='';
+        }else if(elapsed<5800){
+          phase=2;
+          blobEl.style.opacity='1';
+          drawMiniBlob(t,IDLE_R,0.5,true);
+          textEl.textContent='';
+        }else if(elapsed<9200){
+          phase=3;
+          blobEl.style.opacity='0';
+          blobEl.style.opacity='0';
+          var progress=ease((elapsed-5800)/3400);
+          var chars=Math.floor(progress*phrase.length);
+          textEl.textContent=phrase.substring(0,chars);
+        }else{
+          phase=-1;
+          keyEl.classList.remove('pressed');
+          textEl.textContent=phrase;
+          blobEl.style.opacity='0';
+        }
+
+        if(phase!==prevPhase){setActive(phase);prevPhase=phase;}
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    })();
+    (function(){
+      var btn=document.querySelector('.copy-btn');
+      if(!btn)return;
+      var cmds='git clone https://github.com/basuev/localwhisper.git\ncd localwhisper\nbash scripts/install.sh';
+      btn.addEventListener('click',function(){
+        if(navigator.clipboard){
+          navigator.clipboard.writeText(cmds);
+        }else{
+          var ta=document.createElement('textarea');
+          ta.value=cmds;ta.style.position='fixed';ta.style.left='-9999px';
+          document.body.appendChild(ta);ta.select();
+          document.execCommand('copy');document.body.removeChild(ta);
+        }
+        btn.innerHTML='<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+        setTimeout(function(){
+          btn.innerHTML='<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+        },2000);
+      });
+    })();
+  </script>
+
+</body>
+</html>
