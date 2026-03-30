@@ -1,4 +1,4 @@
-# LocalWhisper configuration
+# localwhisper configuration
 
 # Whisper model (speed/quality tradeoff):
 #   mlx-community/whisper-large-v3-mlx       - best quality, ~2-4s per 5s chunk
@@ -21,6 +21,9 @@ ollama_url: "http://localhost:11434"
 
 # Translation: null = off, or target language name like "English", "Japanese"
 # translate_to: null
+
+# Launch app automatically after login
+launch_at_login: true
 
 # Hotkey: keycode for Right Option
 hotkey_keycode: 61
@@ -46,4 +49,6 @@ chunk_duration: 5.0
 # Sound feedback
 sound_start: "/System/Library/Sounds/Tink.aiff"
 sound_stop: "/System/Library/Sounds/Pop.aiff"
+sound_cancel: "/System/Library/Sounds/Funk.aiff"
 sound_error: "/System/Library/Sounds/Sosumi.aiff"
+sound_feedback: "/System/Library/Sounds/Glass.aiff"

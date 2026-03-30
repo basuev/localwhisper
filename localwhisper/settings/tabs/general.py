@@ -74,6 +74,15 @@ class GeneralTab:
         self._blob_theme.setFrameOrigin_(AppKit.NSMakePoint(TAB_PADDING_X, y))
         self._view.addSubview_(self._blob_theme)
 
+        y -= ROW_HEIGHT + TAB_ROW_GAP
+
+        self._launch_at_login = LabeledToggle.alloc().initWithLabel_callback_(
+            "Launch At Login",
+            self._on_launch_at_login_changed,
+        )
+        self._launch_at_login.setFrameOrigin_(AppKit.NSMakePoint(TAB_PADDING_X, y))
+        self._view.addSubview_(self._launch_at_login)
+
         self.sync(config)
 
     @property
@@ -95,6 +104,9 @@ class GeneralTab:
         blob_theme = config.get("blob_theme", "dark")
         self._blob_theme.set_value(blob_theme == "light")
 
+        launch_at_login = config.get("launch_at_login", True)
+        self._launch_at_login.set_value(launch_at_login)
+
     def _on_language_changed(self, name: str):
         code = _name_to_code.get(name, "ru")
         self._on_change("language", code)
@@ -109,3 +121,6 @@ class GeneralTab:
 
     def _on_blob_theme_changed(self, is_on: bool):
         self._on_change("blob_theme", "light" if is_on else "dark")
+
+    def _on_launch_at_login_changed(self, is_on: bool):
+        self._on_change("launch_at_login", is_on)

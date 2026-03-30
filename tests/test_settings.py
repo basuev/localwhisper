@@ -29,6 +29,10 @@ def test_general_tab_hotkey_mappings():
     assert _hotkey_code_to_name[54] == "Right Command"
 
 
+def test_general_tab_launch_at_login_default(default_config):
+    assert default_config["launch_at_login"] is True
+
+
 def test_models_tab_whisper_mappings():
     from localwhisper.constants import WHISPER_MODELS
     from localwhisper.settings.tabs.models import (

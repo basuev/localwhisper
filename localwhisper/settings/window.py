@@ -58,7 +58,7 @@ class SettingsWindow:
                 False,
             )
         )
-        self._window.setTitle_("LocalWhisper Preferences")
+        self._window.setTitle_("localwhisper Preferences")
 
         self._delegate = _WindowDelegate.alloc().initWithOwner_(self)
         self._window.setDelegate_(self._delegate)
