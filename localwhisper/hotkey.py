@@ -1,8 +1,11 @@
+import logging
 import threading
 import time
 from collections.abc import Callable
 
 import Quartz
+
+log = logging.getLogger(__name__)
 
 ESCAPE_KEYCODE = 53
 
@@ -99,11 +102,16 @@ class HotkeyListener:
         )
 
         if tap is None:
-            raise RuntimeError(
-                "Failed to create event tap. "
+            from .preflight import notify
+
+            msg = (
                 "Grant Accessibility permission in "
-                "System Settings > Privacy & Security."
+                "System Settings > Privacy & Security "
+                "and restart the app."
             )
+            log.error("Failed to create event tap. %s", msg)
+            notify(msg)
+            return
 
         run_loop_source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
         Quartz.CFRunLoopAddSource(
