@@ -9,27 +9,28 @@ macOS status bar app for local speech-to-text using MLX Whisper on Apple Silicon
 - automatic paste back into the previously focused app
 - optional post-processing via Ollama or OpenAI
 - optional translation
-- launch via Spotlight after Homebrew Cask install
 - launch at login toggle in Preferences
 
 ## requirements
 
 - macOS on Apple Silicon
-- Homebrew for app install
+- Python 3.11+
+- uv
 - Ollama for local post-processing
 
 ## installation
 
 ```bash
-brew install basuev/localwhisper/localwhisper
+git clone https://github.com/basuev/localwhisper.git
+cd localwhisper
+bash scripts/install.sh
 ```
 
 After installation:
 
-1. launch `localwhisper` via Spotlight
-2. allow Microphone access when macOS asks
-3. allow Accessibility access for `localwhisper`
-4. wait for the first Whisper model download to finish on first launch
+1. allow Microphone access when macOS asks
+2. allow Accessibility access for the terminal or `localwhisper`
+3. wait for the first Whisper model download to finish on first launch
 
 ## usage
 
@@ -64,7 +65,6 @@ See [config.example.yaml](config.example.yaml) for the full config.
 
 | purpose | path |
 |---------|------|
-| app | `/Applications/localwhisper.app` |
 | config | `~/.config/localwhisper/config.yaml` |
 | auth | `~/.config/localwhisper/auth.json` |
 | history | `~/.local/share/localwhisper/history.jsonl` |
@@ -75,7 +75,7 @@ See [config.example.yaml](config.example.yaml) for the full config.
 Install dependencies:
 
 ```bash
-uv sync --group dev --group packaging
+uv sync --group dev
 ```
 
 Run from source:
@@ -89,15 +89,3 @@ Verify:
 ```bash
 bash scripts/verify.sh
 ```
-
-Build the macOS app bundle:
-
-```bash
-bash scripts/build_app.sh
-```
-
-This produces:
-
-- `dist/localwhisper.app`
-- `dist/localwhisper.app.zip`
-- `dist/localwhisper.rb` after running `scripts/render_cask.py`
